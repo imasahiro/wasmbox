@@ -14,4 +14,15 @@
  * limitations under the License.
  */
 
+#include "wasmbox/wasmbox.h"
 
+int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
+                        wasm_u16_t file_name_len) {
+    return 0;
+}
+
+int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
+                        wasm_u16_t result_stack_size)
+{
+    return 0;
+}
