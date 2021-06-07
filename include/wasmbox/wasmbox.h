@@ -18,6 +18,7 @@
 #define WASMBOX_H
 
 #include <stdint.h>
+#include <limits.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +35,15 @@ typedef int64_t  wasm_s64_t;
 typedef float    wasm_f32_t;
 typedef double   wasm_f64_t;
 
+#define WASM_U8_MAX (UCHAR_MAX)
+#define WASM_S8_MAX (SCHAR_MAX)
+#define WASM_U16_MAX (USHRT_MAX)
+#define WASM_S16_MAX (SHRT_MAX)
+#define WASM_U32_MAX (UINT_MAX)
+#define WASM_S32_MAX (INT_MAX)
+#define WASM_U64_MAX (ULONG_MAX)
+#define WASM_S64_MAX (LONG_MAX)
+
 typedef union wasmbox_value_t {
     wasm_u8_t u8;
     wasm_s8_t s8;
@@ -46,6 +56,24 @@ typedef union wasmbox_value_t {
     wasm_f32_t f32;
     wasm_f64_t f64;
 } wasmbox_value_t;
+
+typedef enum wasmbox_value_type_t {
+    WASM_TYPE_UNDEFINED = 0,
+    WASM_TYPE_I32 = 1,
+    WASM_TYPE_I64 = 2,
+    WASM_TYPE_F32 = 3,
+    WASM_TYPE_F64 = 4,
+} wasmbox_value_type_t;
+
+typedef struct wasmbox_name_t {
+    wasm_u32_t len;
+    wasm_u8_t value[0];
+} wasmbox_name_t;
+
+typedef struct wasmbox_limit_t {
+    wasm_u32_t min;
+    wasm_u32_t max;
+} wasmbox_limit_t;
 
 typedef struct wasmbox_module_t {
 } wasmbox_module_t;
