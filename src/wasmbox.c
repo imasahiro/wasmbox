@@ -447,12 +447,12 @@ static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_func
 
 static void parse_i32_const(wasmbox_input_stream_t *ins, wasmbox_value_t *v)
 {
-    (*v).u32 = wasmbox_parse_signed_leb128(ins->data + ins->index, &ins->index, ins->length);
+    (*v).s32 = wasmbox_parse_signed_leb128(ins->data + ins->index, &ins->index, ins->length);
 }
 
 static void parse_i64_const(wasmbox_input_stream_t *ins, wasmbox_value_t *v)
 {
-    (*v).u64 = wasmbox_parse_signed_leb128(ins->data + ins->index, &ins->index, ins->length);
+    (*v).s64 = wasmbox_parse_signed_leb128(ins->data + ins->index, &ins->index, ins->length);
 }
 
 static void parse_f32_const(wasmbox_input_stream_t *ins, wasmbox_value_t *v)
@@ -931,12 +931,20 @@ static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
 static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
     while (1) {
+        fprintf(stdout, "opcode: %s\n", debug_opcodes[code->h.opcode]);
         switch (code->h.opcode) {
             case OPCODE_LOAD_CONST_I32:
                 (*stack++).u32 = code->v.value.u32;
                 code++;
                 break;
+            case OPCODE_LOAD_CONST_I64:
+                (*stack++).u64 = code->v.value.u64;
+                code++;
+                break;
             case OPCODE_RETURN:
+                return;
+            default:
+                LOG("unknown opcode");
                 return;
         }
     }

@@ -24,9 +24,9 @@ extern "C" {
 wasm_u64_t wasmbox_parse_unsigned_leb128(const wasm_u8_t *p, wasm_u32_t *idx, wasm_u32_t len)
 {
     wasm_u64_t result = 0;
-    const wasm_u8_t mask = 1 << (sizeof(wasm_u8_t) * 8 - 1);
+    const wasm_u64_t mask = 1 << (sizeof(wasm_u8_t) * 8 - 1);
     unsigned shift = 0;
-    wasm_u8_t v;
+    wasm_u64_t v;
     while (*idx <= len) {
         v = *p++;
         *idx += 1;
@@ -43,9 +43,9 @@ wasm_u64_t wasmbox_parse_unsigned_leb128(const wasm_u8_t *p, wasm_u32_t *idx, wa
 wasm_s64_t wasmbox_parse_signed_leb128(const wasm_u8_t *p, wasm_u32_t *idx, wasm_u32_t len)
 {
     wasm_s64_t result = 0;
-    const wasm_u8_t mask = 1 << (sizeof(wasm_u8_t) * 8 - 1);
+    const wasm_s64_t mask = 1ULL << (sizeof(wasm_u8_t) * 8 - 1);
     unsigned shift = 0;
-    wasm_u8_t v;
+    wasm_s64_t v;
     do {
         v = *p++;
         *idx += 1;
