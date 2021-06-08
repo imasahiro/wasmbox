@@ -84,6 +84,10 @@ typedef struct wasmbox_type_t {
 } wasmbox_type_t;
 
 typedef struct wasmbox_code_t {
+    union header {
+        wasm_u16_t opcode;
+        void *label;
+    } h;
 } wasmbox_code_t;
 
 typedef struct wasmbox_function_t {
