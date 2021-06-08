@@ -250,8 +250,11 @@ enum wasmbox_opcode {
     CONST_OP_EACH(FUNC5)
     SATURATING_TRUNCATION_INST_EACH(FUNC5)
 #undef FUNC5
+    OPCODE_RETURN
 };
 
+#define WASMBOX_VM_DEBUG 1
+#ifdef WASMBOX_VM_DEBUG
 static const char *debug_opcodes[] = {
 #define FUNC4(opcode, type, inst, vmopcode) #vmopcode,
     DUMMY_INST_EACH(FUNC4)
@@ -265,7 +268,9 @@ static const char *debug_opcodes[] = {
     CONST_OP_EACH(FUNC5)
     SATURATING_TRUNCATION_INST_EACH(FUNC5)
 #undef FUNC5
+    "OPCODE_RETURN"
 };
+#endif /* WASMBOX_VM_DEBUG */
 
 #ifdef __cplusplus
 }
