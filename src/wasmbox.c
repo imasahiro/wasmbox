@@ -21,8 +21,108 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__);
+
+static inline void *wasmbox_malloc(wasm_u32_t size) {
+    void *mem = malloc(size);
+    bzero(mem, size);
+    return mem;
+}
+
+/* Module API */
+#define MODULE_TYPES_INIT_SIZE 4
+static void wasmbox_module_register_new_type(wasmbox_module_t *mod, wasmbox_type_t *func_type)
+{
+    if (mod->types == NULL) {
+        mod->types = (wasmbox_type_t **) wasmbox_malloc(sizeof(mod->types) * MODULE_TYPES_INIT_SIZE);
+        mod->type_size = 0;
+        mod->type_capacity = MODULE_TYPES_INIT_SIZE;
+    }
+    if (mod->type_size + 1 == mod->type_capacity) {
+        mod->types = (wasmbox_type_t **) realloc(mod->types, sizeof(mod->types) * mod->type_capacity * 2);
+        mod->type_capacity *= 2;
+    }
+    mod->types[mod->type_size++] = func_type;
+}
+
+#define MODULE_FUNCTIONS_INIT_SIZE 4
+static void wasmbox_module_register_new_function(wasmbox_module_t *mod, wasmbox_function_t *func)
+{
+    if (mod->functions == NULL) {
+        mod->functions = (wasmbox_function_t **) wasmbox_malloc(sizeof(mod->functions) * MODULE_FUNCTIONS_INIT_SIZE);
+        mod->function_size = 0;
+        mod->type_capacity = MODULE_FUNCTIONS_INIT_SIZE;
+    }
+    if (mod->function_size + 1 == mod->function_capacity) {
+        mod->functions = (wasmbox_function_t **) realloc(mod->types,
+                                                         sizeof(mod->types) * mod->function_capacity * 2);
+        mod->function_capacity *= 2;
+    }
+    mod->functions[mod->function_size++] = func;
+}
+
+static const char *value_type_to_string(wasmbox_value_type_t type) {
+    switch (type) {
+        case WASM_TYPE_I32:
+            return "I32";
+        case WASM_TYPE_I64:
+            return "I64";
+        case WASM_TYPE_F32:
+            return "F32";
+        case WASM_TYPE_F64:
+            return "F64";
+        default:
+            return "unreachable";
+    }
+}
+
+static int print_function_type(wasmbox_type_t *func_type) {
+    fprintf(stdout, "function-type: (");
+    for (wasm_u32_t i = 0; i < func_type->argument_size; i++) {
+        if (i != 0) {
+            fprintf(stdout, ", ");
+        }
+        fprintf(stdout, "%s", value_type_to_string(func_type->args[i]));
+    }
+    fprintf(stdout, ") -> (");
+    for (wasm_u32_t i = 0; i < func_type->return_size; i++) {
+        if (i != 0) {
+            fprintf(stdout, ", ");
+        }
+        fprintf(stdout, "%s", value_type_to_string(func_type->args[func_type->argument_size + i]));
+    }
+    fprintf(stdout, ")");
+    return 0;
+}
+
+static int print_function(wasmbox_function_t *func, wasm_u32_t index) {
+    if (func->name != NULL) {
+        fprintf(stdout, "function %.*s:", func->name->len, func->name->value);
+    } else {
+        fprintf(stdout, "function func%u:", index);
+    }
+    print_function_type(func->type);
+    fprintf(stdout, " {}");
+    return 0;
+}
+
+static void wasmbox_module_dump(wasmbox_module_t *mod)
+{
+    fprintf(stdout, "module %p {\n", mod);
+    if (0) {
+        for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
+            print_function_type(mod->types[i]);
+            fprintf(stdout, "\n");
+        }
+    }
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        print_function(mod->functions[i], i);
+        fprintf(stdout, "\n");
+    }
+    fprintf(stdout, "}\n");
+}
 
 static int parse_magic(wasmbox_input_stream_t *ins) {
     return wasmbox_input_stream_read_u32(ins) == 0x0061736d /* 00 'a' 's' 'm' */;
@@ -73,45 +173,37 @@ static int parse_value_type(wasmbox_input_stream_t *ins, wasmbox_value_type_t *t
     }
 }
 
-static const char *value_type_to_string(wasmbox_value_type_t type) {
-    switch (type) {
-        case WASM_TYPE_I32:
-            return "I32";
-        case WASM_TYPE_I64:
-            return "I64";
-        case WASM_TYPE_F32:
-            return "F32";
-        case WASM_TYPE_F64:
-            return "F64";
-        default:
-            return "unreachable";
-    }
-}
-
-static int parse_type_vector(wasmbox_input_stream_t *ins) {
-    wasmbox_value_type_t type;
-    fprintf(stdout, "(");
-    wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    for (wasm_u64_t i = 0; i < len; i++) {
-        if (parse_value_type(ins, &type) != 0) {
+static int parse_type_vector(wasmbox_input_stream_t *ins, wasm_u32_t len, wasmbox_value_type_t *type) {
+    for (wasm_u32_t i = 0; i < len; i++) {
+        if (parse_value_type(ins, &type[i]) != 0) {
             return -1;
         }
-        if (i != 0) {
-            fprintf(stdout, ", ");
-        }
-        fprintf(stdout, "%s", value_type_to_string(type));
     }
-    fprintf(stdout, ")");
     return 0;
 }
 
-static int parse_function_type(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
+static wasmbox_type_t *parse_function_type(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
+    wasmbox_value_type_t types[16];
     assert(wasmbox_input_stream_read_u8(ins) == 0x60);
-    parse_type_vector(ins);
-    fprintf(stdout, " -> ");
-    parse_type_vector(ins);
-    fprintf(stdout, "\n");
-    return 0;
+    wasm_u32_t args_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+    assert(args_size < 16);
+    if (parse_type_vector(ins, args_size, types) != 0) {
+        return NULL;
+    }
+    wasm_u32_t ret_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+    assert(ret_size < 16);
+    wasmbox_type_t *func_type = (wasmbox_type_t *) wasmbox_malloc(
+            sizeof(*func_type) + sizeof(wasmbox_value_type_t *) * (args_size + ret_size));
+    func_type->argument_size = args_size;
+    func_type->return_size = ret_size;
+    for (wasm_u32_t i = 0; i < args_size; ++i) {
+        func_type->args[i] = types[i];
+    }
+
+    if (parse_type_vector(ins, func_type->return_size, func_type->args + args_size) != 0) {
+        return NULL;
+    }
+    return func_type;
 }
 
 /* Control Instructions */
@@ -151,11 +243,11 @@ static int parse_blocktype(wasmbox_input_stream_t *ins, wasmbox_blocktype_t *typ
     }
 }
 
-static int parse_instruction(wasmbox_input_stream_t *ins);
+static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_function_t *func);
 
 // INST(0x02 bt:blocktype (in:instr)* 0x0B, block bt in* end)
 // INST(0x03 bt:blocktype (in:instr)* 0x0B, loop bt in* end)
-static int decode_block(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_block(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_blocktype_t blocktype;
     if (parse_blocktype(ins, &blocktype)) {
         return -1;
@@ -176,7 +268,7 @@ static int decode_block(wasmbox_input_stream_t *ins, wasm_u8_t op) {
             wasmbox_input_stream_read_u8(ins);
             break;
         }
-        if (parse_instruction(ins)) {
+        if (parse_instruction(ins, NULL)) {
             return -1;
         }
     }
@@ -184,14 +276,14 @@ static int decode_block(wasmbox_input_stream_t *ins, wasm_u8_t op) {
 }
 
 // INST(0x05, end)
-static int decode_block_end(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_function_t *funcs, wasm_u8_t op) {
     fprintf(stdout, "end\n");
     return 0;
 }
 
 // INST(0x04 bt:blocktype (in:instr)* 0x0B, if bt in* end)
 // INST(0x04 bt:blocktype (in:instr)* 0x05 (in2:instr)* 0x0B, if bt in1* else in2* end)
-static int decode_if(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_blocktype_t blocktype;
     if (parse_blocktype(ins, &blocktype)) {
         return -1;
@@ -209,7 +301,7 @@ static int decode_if(wasmbox_input_stream_t *ins, wasm_u8_t op) {
             wasmbox_input_stream_read_u8(ins);
             continue;
         }
-        if (parse_instruction(ins)) {
+        if (parse_instruction(ins, NULL)) {
             return -1;
         }
     }
@@ -217,21 +309,21 @@ static int decode_if(wasmbox_input_stream_t *ins, wasm_u8_t op) {
 }
 
 // INST(0x0C l:labelidx, br l)
-static int decode_br(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_br(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "br %llu\n", labelidx);
     return 0;
 }
 
 // INST(0x0D l:labelidx, br_if l)
-static int decode_br_if(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_br_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "br_if %llu\n", labelidx);
     return 0;
 }
 
 // INST(0x0E l:vec(labelidx) lN:labelidx, br_table l* lN)
-static int decode_br_table(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     fprintf(stdout, "br_table l:(");
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     for (wasm_u64_t i = 0; i < len; i++) {
@@ -247,26 +339,26 @@ static int decode_br_table(wasmbox_input_stream_t *ins, wasm_u8_t op) {
 }
 
 // INST(0x0F, return)
-static int decode_return(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_return(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     fprintf(stdout, "return\n");
     return 0;
 }
 
 // BLOCK_INST(0x11, x:typeidx 0x00, call_indirect x)
-static int decode_call(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_call(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t funcidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "call %llu\n", funcidx);
     return 0;
 }
 
 // INST(0x11 x:typeidx 0x00, call_indirect x)
-static int decode_call_indirect(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_call_indirect(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t typeidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "call_indirect %llu\n", typeidx);
     return 0;
 }
 
-static int decode_variable_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     switch (op) {
 #define FUNC(opcode, param, type, inst) case (opcode): { \
@@ -287,7 +379,7 @@ static int parse_memarg(wasmbox_input_stream_t *ins, wasm_u64_t *align, wasm_u64
     return 0;
 }
 
-static int decode_memory_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_memory_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t align;
     wasm_u64_t offset;
     if (parse_memarg(ins, &align, &offset)) {
@@ -306,7 +398,7 @@ static int decode_memory_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
     return 0;
 }
 
-static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     if (wasmbox_input_stream_read_u8(ins) != 0x00) {
         return -1;
     }
@@ -324,7 +416,7 @@ static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasm_u8_t op
 }
 
 /* Numeric Instructions */
-static int decode_constant_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_value_t v;
     switch (op) {
         case 0x41:
@@ -351,7 +443,7 @@ static int decode_constant_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
     return 0;
 }
 
-static int decode_op0_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     switch (op) {
 #define FUNC(opcode, type, inst) case (opcode): { \
     fprintf(stdout, "" #type "." # inst "\n"); \
@@ -367,7 +459,7 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
     return -1;
 }
 
-static int decode_truncation_inst(wasmbox_input_stream_t *ins, wasm_u8_t op) {
+static int decode_truncation_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u8_t op1 = wasmbox_input_stream_read_u8(ins);
     switch (op1) {
 #define FUNC(opcode0, opcode1, type, inst) case opcode1: { \
@@ -402,21 +494,22 @@ static const wasmbox_op_decorder_t decoders[] = {
         {0xFC, 0xFC, decode_truncation_inst}
 };
 
-static int parse_instruction(wasmbox_input_stream_t *ins) {
+static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_function_t *func) {
     wasm_u8_t op = wasmbox_input_stream_read_u8(ins);
     for (int i = 0; i < sizeof(decoders) / sizeof(decoders[0]); i++) {
         const wasmbox_op_decorder_t d = decoders[i];
         if (d.lower <= op && op <= d.upper) {
-            return d.func(ins, op);
+            return d.func(ins, func, op);
         }
     }
     return -1;
 }
 
-static int parse_code(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasm_u64_t codelen) {
+static int parse_code(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                      wasmbox_function_t *func, wasm_u64_t codelen) {
     wasm_u64_t end = ins->index + codelen;
     while (ins->index < end) {
-        if (parse_instruction(ins)) {
+        if (parse_instruction(ins, NULL)) {
             return -1;
         }
     }
@@ -428,7 +521,7 @@ static int parse_local_variable(wasmbox_input_stream_t *ins, wasm_u64_t *index, 
     return parse_value_type(ins, valtype);
 }
 
-static int parse_local_variables(wasmbox_input_stream_t *ins) {
+static int parse_local_variables(wasmbox_input_stream_t *ins, wasmbox_function_t *func) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     for (wasm_u64_t i = 0; i < len; i++) {
         wasm_u64_t localidx;
@@ -441,32 +534,34 @@ static int parse_local_variables(wasmbox_input_stream_t *ins) {
     return 0;
 }
 
-static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
+static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasm_u32_t funcindex) {
+    wasmbox_function_t *func = mod->functions[funcindex];
     wasm_u64_t size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     wasm_u64_t index = ins->index;
     fprintf(stdout, "code(size:%llu)\n", size);
     dump_binary(ins, size);
-    if (parse_local_variables(ins)) {
+    if (parse_local_variables(ins, func)) {
         return -1;
     }
     size -= ins->index - index;
-    return parse_code(ins, mod, size);
+    return parse_code(ins, mod, func, size);
 }
 
 static int parse_type_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "type size=%llu\n", len);
     for (wasm_u64_t i = 0; i < len; i++) {
-        if (parse_function_type(ins, mod) != 0) {
+        wasmbox_type_t *func_type = NULL;
+        if ((func_type = parse_function_type(ins, mod)) == NULL) {
             return -1;
         }
+        wasmbox_module_register_new_type(mod, func_type);
     }
     return 0;
 }
 
 static int parse_name(wasmbox_input_stream_t *ins, wasmbox_name_t **name) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    wasmbox_name_t *n = (wasmbox_name_t *) malloc(sizeof(wasmbox_name_t) + len);
+    wasmbox_name_t *n = (wasmbox_name_t *) wasmbox_malloc(sizeof(wasmbox_name_t) + len);
     n->len = len;
     for (wasm_u64_t i = 0; i < len; i++) {
         n->value[i] = wasmbox_input_stream_read_u8(ins);
@@ -543,10 +638,11 @@ static int parse_import_section(wasmbox_input_stream_t *ins, wasm_u64_t section_
 
 static int parse_function_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "function (num:%llu)\n", len);
     for (wasm_u64_t i = 0; i < len; i++) {
         wasm_u32_t v = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-        fprintf(stdout, "function idx(%u)\n", v);
+        wasmbox_function_t *func = (wasmbox_function_t *) wasmbox_malloc(sizeof(*func));
+        func->type = mod->types[v];
+        wasmbox_module_register_new_function(mod, func);
     }
     return 0;
 }
@@ -598,7 +694,7 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
             wasmbox_input_stream_read_u8(ins);
             break;
         }
-        if (parse_instruction(ins)) {
+        if (parse_instruction(ins, NULL)) {
             return -1;
         }
     }
@@ -641,8 +737,12 @@ static int parse_export_entry(wasmbox_input_stream_t *ins, wasmbox_module_t *mod
             return -1;
     }
     wasm_u32_t index = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
-    free(name);
+    if (type != 0x00) {
+        fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
+        free(name);
+    } else {
+        mod->functions[index]->name = name;
+    }
     return 0;
 }
 
@@ -672,9 +772,9 @@ static int parse_element_section(wasmbox_input_stream_t *ins, wasm_u64_t section
 }
 
 static int parse_code_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
-    wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    for (wasm_u64_t i = 0; i < len; i++) {
-        if (parse_function(ins, mod)) {
+    wasm_u32_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+    for (wasm_u32_t i = 0; i < len; i++) {
+        if (parse_function(ins, mod, i)) {
             return -1;
         }
     }
@@ -735,7 +835,6 @@ static int parse_module(wasmbox_input_stream_t *ins, wasmbox_module_t *module) {
     return 0;
 }
 
-
 int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
                         wasm_u16_t file_name_len) {
     wasmbox_input_stream_t stream = {};
@@ -745,11 +844,52 @@ int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
         return -1;
     }
     int parsed = parse_module(ins, mod);
+    if (parsed == 0) {
+        wasmbox_module_dump(mod);
+    }
     wasmbox_input_stream_close(ins);
     return parsed;
 }
 
+int wasmbox_module_dispose(wasmbox_module_t *mod) {
+    for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
+        free(mod->types[i]);
+    }
+    free(mod->types);
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        free(mod->functions[i]->name);
+        free(mod->functions[i]);
+    }
+    free(mod->functions);
+    return 0;
+}
+
+static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
+{
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        wasmbox_function_t *func = mod->functions[i];
+        wasm_u32_t start_len = strlen("_start");
+        if (func->name != NULL && func->name->len == start_len &&
+        strncmp((const char *) func->name->value, "_start", start_len) == 0) {
+            return func;
+        }
+    }
+    return NULL;
+}
+
+
+static void wasmbox_eval_function(wasmbox_code_t *code, wasmbox_value_t *stack)
+{
+}
+
 int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
                         wasm_u16_t result_stack_size) {
+    wasmbox_function_t *func = wasmbox_module_find_entrypoint(mod);
+    if (func == NULL) {
+        LOG("_start function not found");
+        return -1;
+    }
+    int num_of_returns = func->type->return_size;
+    wasmbox_eval_function(func->code, result + num_of_returns);
     return 0;
 }

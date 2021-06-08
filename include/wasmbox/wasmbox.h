@@ -63,6 +63,8 @@ typedef enum wasmbox_value_type_t {
     WASM_TYPE_I64 = 2,
     WASM_TYPE_F32 = 3,
     WASM_TYPE_F64 = 4,
+    WASM_TYPE_FUNCREF = 5,
+    WASM_TYPE_EXTERNREF = 6
 } wasmbox_value_type_t;
 
 typedef struct wasmbox_name_t {
@@ -75,7 +77,30 @@ typedef struct wasmbox_limit_t {
     wasm_u32_t max;
 } wasmbox_limit_t;
 
+typedef struct wasmbox_type_t {
+    wasm_u16_t return_size;
+    wasm_u16_t argument_size;
+    wasmbox_value_type_t args[0];
+} wasmbox_type_t;
+
+typedef struct wasmbox_code_t {
+} wasmbox_code_t;
+
+typedef struct wasmbox_function_t {
+    wasmbox_code_t *code;
+    wasmbox_type_t *type;
+    wasmbox_name_t *name;
+    wasm_u16_t locals;
+    wasm_u16_t code_size;
+} wasmbox_function_t;
+
 typedef struct wasmbox_module_t {
+    wasmbox_function_t **functions;
+    wasm_u32_t function_size;
+    wasm_u32_t function_capacity;
+    wasmbox_type_t **types;
+    wasm_u32_t type_size;
+    wasm_u32_t type_capacity;
 } wasmbox_module_t;
 
 int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
@@ -83,6 +108,9 @@ int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
 
 int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
                         wasm_u16_t result_stack_size);
+
+int wasmbox_module_dispose(wasmbox_module_t *mod);
+
 #ifdef __cplusplus
 }
 #endif

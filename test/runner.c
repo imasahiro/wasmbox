@@ -33,6 +33,7 @@ int main(int argc, char const *argv[]) {
         fprintf(stdout, "Failed to evaluate a module(%s).\n", argv[1]);
         return -1;
     }
+    wasmbox_module_dispose(&mod);
     fprintf(stdout, "stack[0]=%llu\n", stack[0].u64);
     return 0;
 }
