@@ -17,6 +17,7 @@
 #include "wasmbox/wasmbox.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 int main(int argc, char const *argv[]) {
     if (argc <= 1) {
@@ -34,6 +35,37 @@ int main(int argc, char const *argv[]) {
         return -1;
     }
     wasmbox_module_dispose(&mod);
-    fprintf(stdout, "stack[0]=%llu\n", stack[0].u64);
-    return 0;
+    FILE *fp = fopen(argv[2], "r");
+    wasmbox_value_t expected;
+    int ch = fgetc(fp);
+    const char buf[128];
+    fread((void *) buf, 128, 1, fp);
+
+    int equal;
+    switch (ch) {
+        case 'i': // i32
+            expected.s32 = atoi(buf);
+            equal = expected.s32 == stack[0].s32;
+            fprintf(stdout, "expected:(%d) %s actual(%d)\n", expected.s32, equal? "==" : "!=", stack[0].s32);
+            break;
+        case 'I': // i64
+            expected.s64 = atol(buf);
+            equal = expected.s64 == stack[0].s64;
+            fprintf(stdout, "expected:(%lld) %s actual(%lld)\n", expected.s64, equal? "==" : "!=", stack[0].s64);
+            break;
+        case 'f': // f32
+            expected.f32 = atof(buf);
+            equal = expected.f32 == stack[0].f32;
+            fprintf(stdout, "expected:(%f) %s actual(%f)\n", expected.f32, equal? "==" : "!=", stack[0].f32);
+            break;
+        case 'F': // f64
+            expected.f64 = atof(buf);
+            equal = expected.f64 == stack[0].f64;
+            fprintf(stdout, "expected:(%g) %s actual(%g)\n", expected.f64, equal? "==" : "!=", stack[0].f64);
+            break;
+        default:
+            fprintf(stderr, "unexpected: %c\n", ch);
+            return -1;
+    }
+    return !equal;
 }

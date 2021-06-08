@@ -24,7 +24,7 @@ foreach (SOURCE ${TEST_SOURCES})
     endif()
 
     if ("${SOURCE}" MATCHES ".wasm$")
-        add_test(NAME "test_wasm_${TARGET}" COMMAND TestRunner "${SOURCE}")
+        add_test(NAME "test_wasm_${TARGET}" COMMAND TestRunner "${SOURCE}" "${SOURCE}.result")
         set_tests_properties("test_wasm_${TARGET}" PROPERTIES TIMEOUT 10)
     endif()
 endforeach()
