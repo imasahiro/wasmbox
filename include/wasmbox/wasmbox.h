@@ -90,6 +90,7 @@ typedef struct wasmbox_code_t {
     } h;
     union body {
         wasmbox_value_t value;
+        wasm_u32_t index;
     } v;
 } wasmbox_code_t;
 
@@ -97,6 +98,7 @@ typedef struct wasmbox_function_t {
     wasmbox_code_t *code;
     wasmbox_type_t *type;
     wasmbox_name_t *name;
+    wasmbox_type_t *local_types;
     wasm_u16_t locals;
     wasm_u16_t code_size;
     wasm_u16_t code_capacity;

@@ -84,6 +84,13 @@ static void wasmbox_code_add_const(wasmbox_function_t *func, int vmopcode, wasmb
     wasmbox_code_add(func, &code);
 }
 
+static void wasmbox_code_add_variable(wasmbox_function_t *func, int vmopcode, wasm_u32_t index) {
+    wasmbox_code_t code;
+    code.h.opcode = vmopcode;
+    code.v.index = index;
+    wasmbox_code_add(func, &code);
+}
+
 static const char *value_type_to_string(wasmbox_value_type_t type) {
     switch (type) {
         case WASM_TYPE_I32:
@@ -388,11 +395,12 @@ static int decode_call_indirect(wasmbox_input_stream_t *ins, wasmbox_function_t 
     return 0;
 }
 
+
 static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     switch (op) {
 #define FUNC(opcode, param, type, inst, vmopcode) case (opcode): { \
-    fprintf(stdout, "" #inst "(x:%llu)\n", idx); \
+    wasmbox_code_add_variable(func, vmopcode, idx);                \
     return 0; \
 }
         VARIABLE_INST_EACH(FUNC)
@@ -930,9 +938,15 @@ static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
 
 static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
+    wasmbox_value_t *local = stack;
     while (1) {
         fprintf(stdout, "opcode: %s\n", debug_opcodes[code->h.opcode]);
+        wasm_u64_t v;
         switch (code->h.opcode) {
+            case OPCODE_LOCAL_GET:
+                (*stack++).u64 = local[code->v.index].u64;
+                code++;
+                break;
             case OPCODE_LOAD_CONST_I32:
                 (*stack++).u32 = code->v.value.u32;
                 code++;

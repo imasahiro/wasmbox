@@ -19,13 +19,99 @@
 #include <string.h>
 #include <stdlib.h>
 
+static int check_result(int result_length, wasmbox_value_t stack[], wasmbox_value_t expected[],
+                        wasmbox_value_type_t expected_types[]) {
+    int equal = 1;
+    for (int i = 0; i < result_length; ++i) {
+        switch (expected_types[i]) {
+            case WASM_TYPE_I32:
+                equal &= expected[i].s32 == stack[i].s32;
+                fprintf(stdout, "expected(%d):(%d) %s actual(%d)\n", i, expected[i].s32, equal? "==" : "!=", stack[i].s32);
+                break;
+            case WASM_TYPE_I64:
+                equal &= expected[i].s64 == stack[i].s64;
+                fprintf(stdout, "expected(%d):(%lld) %s actual(%lld)\n", i, expected[i].s64,
+                        equal? "==" : "!=", stack[i].s64);
+                break;
+            case WASM_TYPE_F32:
+                equal &= expected[i].f32 == stack[i].f32;
+                fprintf(stdout, "expected(%d):(%f) %s actual(%f)\n", i, expected[i].f32,
+                        equal? "==" : "!=", stack[i].f32);
+                break;
+            case WASM_TYPE_F64:
+                equal &= expected[i].f64 == stack[0].f64;
+                fprintf(stdout, "expected(%d):(%g) %s actual(%g)\n", i, expected[i].f64,
+                        equal? "==" : "!=", stack[0].f64);
+                break;
+            default:
+                fprintf(stderr, "unexpected: %d\n", expected_types[i]);
+                equal = 0;
+                break;
+        }
+    }
+    return !equal;
+}
+
 int main(int argc, char const *argv[]) {
-    if (argc <= 1) {
-        fprintf(stdout, "usage: %s a.wasm\n", argv[0]);
+    if (argc <= 2) {
+        fprintf(stdout, "usage: %s a.wasm a.wasm.result\n", argv[0]);
         return 0;
     }
+    FILE *fp = fopen(argv[2], "r");
     wasmbox_module_t mod = {};
+    int stack_index = 0;
     wasmbox_value_t stack[10] = {};
+    int expected_index = 0;
+    wasmbox_value_t expected[10] = {};
+    wasmbox_value_type_t expected_type[10] = {};
+
+    for (int i = 0; i < 10; ++i) {
+        int io = fgetc(fp);
+        if (io == EOF) {
+            break;
+        }
+        int j = 0;
+        char buf[1024];
+        int value_type = fgetc(fp);
+        int ch = fgetc(fp);
+        while (ch != EOF && ch != '\n') {
+            buf[j++] = (char) ch;
+            ch = fgetc(fp);
+        }
+        wasmbox_value_t v;
+        wasmbox_value_type_t type;
+        switch (value_type) {
+            case 'i': // i32
+                v.s32 = atoi(buf);
+                type = WASM_TYPE_I32;
+                break;
+            case 'I': // i64
+                v.s64 = atol(buf);
+                type = WASM_TYPE_I64;
+                break;
+            case 'f': // f32
+                v.f32 = atof(buf);
+                type = WASM_TYPE_F32;
+                break;
+            case 'F': // f64
+                v.f64 = atof(buf);
+                type = WASM_TYPE_F64;
+                break;
+            default:
+                fprintf(stderr, "unexpected: %c\n", ch);
+                return -1;
+        }
+        if (io == '>') {
+            stack[stack_index++] = v;
+        } else if (io == '<') {
+            expected[expected_index] = v;
+            expected_type[expected_index++] = type;
+        } else {
+            fprintf(stderr, "invalid format\n");
+            break;
+        }
+    }
+
     if (wasmbox_load_module(&mod, argv[1], strlen(argv[1])) != 0) {
         fprintf(stdout, "Failed to load a module(%s).\n", argv[1]);
         return -1;
@@ -35,37 +121,5 @@ int main(int argc, char const *argv[]) {
         return -1;
     }
     wasmbox_module_dispose(&mod);
-    FILE *fp = fopen(argv[2], "r");
-    wasmbox_value_t expected;
-    int ch = fgetc(fp);
-    const char buf[128];
-    fread((void *) buf, 128, 1, fp);
-
-    int equal;
-    switch (ch) {
-        case 'i': // i32
-            expected.s32 = atoi(buf);
-            equal = expected.s32 == stack[0].s32;
-            fprintf(stdout, "expected:(%d) %s actual(%d)\n", expected.s32, equal? "==" : "!=", stack[0].s32);
-            break;
-        case 'I': // i64
-            expected.s64 = atol(buf);
-            equal = expected.s64 == stack[0].s64;
-            fprintf(stdout, "expected:(%lld) %s actual(%lld)\n", expected.s64, equal? "==" : "!=", stack[0].s64);
-            break;
-        case 'f': // f32
-            expected.f32 = atof(buf);
-            equal = expected.f32 == stack[0].f32;
-            fprintf(stdout, "expected:(%f) %s actual(%f)\n", expected.f32, equal? "==" : "!=", stack[0].f32);
-            break;
-        case 'F': // f64
-            expected.f64 = atof(buf);
-            equal = expected.f64 == stack[0].f64;
-            fprintf(stdout, "expected:(%g) %s actual(%g)\n", expected.f64, equal? "==" : "!=", stack[0].f64);
-            break;
-        default:
-            fprintf(stderr, "unexpected: %c\n", ch);
-            return -1;
-    }
-    return !equal;
+    return check_result(expected_index, stack, expected, expected_type);
 }
