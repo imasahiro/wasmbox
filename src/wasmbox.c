@@ -31,6 +31,10 @@ static inline void *wasmbox_malloc(wasm_u32_t size) {
     return mem;
 }
 
+static inline void wasmbox_free(void *ptr) {
+    free(ptr);
+}
+
 /* Module API */
 #define MODULE_TYPES_INIT_SIZE 4
 static void wasmbox_module_register_new_type(wasmbox_module_t *mod, wasmbox_type_t *func_type)
@@ -66,13 +70,13 @@ static void wasmbox_module_register_new_function(wasmbox_module_t *mod, wasmbox_
 #define MODULE_CODE_INIT_SIZE 4
 static void wasmbox_code_add(wasmbox_function_t *func, wasmbox_code_t *code) {
     if (func->code == NULL) {
-        func->code = (wasmbox_code_t *) wasmbox_malloc(sizeof(func->code) * MODULE_CODE_INIT_SIZE);
+        func->code = (wasmbox_code_t *) wasmbox_malloc(sizeof(*func->code) * MODULE_CODE_INIT_SIZE);
         func->code_size = 0;
         func->code_capacity = MODULE_CODE_INIT_SIZE;
     }
-    if (func->code_size + 1 == func->code_capacity) {
+    if (func->code_size + sizeof(wasmbox_code_t) >= func->code_capacity) {
         func->code_capacity *= 2;
-        func->code = (wasmbox_code_t *) realloc(func->code, sizeof(func->code) * func->code_capacity);
+        func->code = (wasmbox_code_t *) realloc(func->code, sizeof(*func->code) * func->code_capacity);
     }
     memcpy(&func->code[func->code_size++], code, sizeof(*code));
 }
@@ -678,8 +682,8 @@ static int parse_import(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
         return -1;
     }
     fprintf(stdout, "import(%.*s:%.*s)\n", module_name->len, module_name->value, ns_name->len, ns_name->value);
-    free(module_name);
-    free(ns_name);
+    wasmbox_free(module_name);
+    wasmbox_free(ns_name);
     return 0;
 }
 
@@ -805,7 +809,7 @@ static int parse_export_entry(wasmbox_input_stream_t *ins, wasmbox_module_t *mod
     wasm_u32_t index = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     if (type != 0x00) {
         fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
-        free(name);
+        wasmbox_free(name);
     } else {
         mod->functions[index]->name = name;
     }
@@ -919,15 +923,15 @@ int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
 
 int wasmbox_module_dispose(wasmbox_module_t *mod) {
     for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
-        free(mod->types[i]);
+        wasmbox_free(mod->types[i]);
     }
-    free(mod->types);
+    wasmbox_free(mod->types);
     for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-        free(mod->functions[i]->name);
-        free(mod->functions[i]);
+        wasmbox_free(mod->functions[i]->name);
+        wasmbox_free(mod->functions[i]);
     }
-    free(mod->functions);
-    free(mod->global_function);
+    wasmbox_free(mod->functions);
+    wasmbox_free(mod->global_function);
     return 0;
 }
 
