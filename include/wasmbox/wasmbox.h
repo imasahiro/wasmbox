@@ -117,7 +117,7 @@ typedef struct wasmbox_module_t {
 int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
                         wasm_u16_t file_name_len);
 
-int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
+int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],
                         wasm_u16_t result_stack_size);
 
 int wasmbox_module_dispose(wasmbox_module_t *mod);

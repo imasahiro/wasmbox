@@ -500,6 +500,14 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func
 }
         DUMMY_INST_EACH(FUNC)
         PARAMETRIC_INST_EACH(FUNC)
+#undef FUNC
+
+#define FUNC(op, type, inst, vmopcode) case (op): { \
+    wasmbox_code_t code;                            \
+    code.h.opcode = vmopcode;                       \
+    wasmbox_code_add(func, &code);                  \
+    return 0;                                       \
+}
         NUMERIC_INST_EACH(FUNC)
 #undef FUNC
         default:
@@ -936,17 +944,57 @@ static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
     return NULL;
 }
 
-static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
+#define NOT_IMPLEMENTED() do { \
+    LOG("not-implemented");    \
+    return;                    \
+} while (0)
+
+static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
+                                  wasmbox_value_t *arguments, wasmbox_value_t *stack)
 {
     wasmbox_value_t *local = stack;
     while (1) {
         fprintf(stdout, "opcode: %s\n", debug_opcodes[code->h.opcode]);
-        wasm_u64_t v;
         switch (code->h.opcode) {
+            case OPCODE_UNREACHABLE: NOT_IMPLEMENTED();
+            case OPCODE_NOP: NOT_IMPLEMENTED();
+            case OPCODE_DROP: NOT_IMPLEMENTED();
+            case OPCODE_SELECT: NOT_IMPLEMENTED();
+            case OPCODE_RETURN:
+                return;
             case OPCODE_LOCAL_GET:
-                (*stack++).u64 = local[code->v.index].u64;
+                (*stack++).u64 = local[-code->v.index].u64;
                 code++;
                 break;
+            case OPCODE_LOCAL_SET: NOT_IMPLEMENTED();
+            case OPCODE_LOCAL_TEE: NOT_IMPLEMENTED();
+            case OPCODE_GLOBAL_GET: NOT_IMPLEMENTED();
+            case OPCODE_GLOBAL_SET: NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD: NOT_IMPLEMENTED();
+            case OPCODE_F32_LOAD: NOT_IMPLEMENTED();
+            case OPCODE_F64_LOAD: NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD8_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD8_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD16_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD16_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD8_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD8_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD16_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD16_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD32_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE: NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE: NOT_IMPLEMENTED();
+            case OPCODE_F32_STORE: NOT_IMPLEMENTED();
+            case OPCODE_F64_STORE: NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE8: NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE16: NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE8: NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE16: NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE32: NOT_IMPLEMENTED();
+            case OPCODE_MEMORY_SIZE: NOT_IMPLEMENTED();
+            case OPCODE_MEMORY_GROW: NOT_IMPLEMENTED();
             case OPCODE_LOAD_CONST_I32:
                 (*stack++).u32 = code->v.value.u32;
                 code++;
@@ -955,8 +1003,157 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 (*stack++).u64 = code->v.value.u64;
                 code++;
                 break;
-            case OPCODE_RETURN:
-                return;
+            case OPCODE_LOAD_CONST_F32: NOT_IMPLEMENTED();
+            case OPCODE_LOAD_CONST_F64: NOT_IMPLEMENTED();
+            case OPCODE_I32_EQZ: NOT_IMPLEMENTED();
+            case OPCODE_I32_EQ: NOT_IMPLEMENTED();
+            case OPCODE_I32_NE: NOT_IMPLEMENTED();
+            case OPCODE_I32_LT_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_LT_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_GT_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_GT_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_LE_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_LE_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_GE_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_GE_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_EQZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_EQ: NOT_IMPLEMENTED();
+            case OPCODE_I64_NE: NOT_IMPLEMENTED();
+            case OPCODE_I64_LT_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_LT_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_GT_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_GT_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_LE_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_LE_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_GE_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_GE_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_EQ: NOT_IMPLEMENTED();
+            case OPCODE_F32_NE: NOT_IMPLEMENTED();
+            case OPCODE_F32_LT: NOT_IMPLEMENTED();
+            case OPCODE_F32_GT: NOT_IMPLEMENTED();
+            case OPCODE_F32_LE: NOT_IMPLEMENTED();
+            case OPCODE_F32_GE: NOT_IMPLEMENTED();
+            case OPCODE_F64_EQ: NOT_IMPLEMENTED();
+            case OPCODE_F64_NE: NOT_IMPLEMENTED();
+            case OPCODE_F64_LT: NOT_IMPLEMENTED();
+            case OPCODE_F64_GT: NOT_IMPLEMENTED();
+            case OPCODE_F64_LE: NOT_IMPLEMENTED();
+            case OPCODE_F64_GE: NOT_IMPLEMENTED();
+            case OPCODE_I32_CLZ: NOT_IMPLEMENTED();
+            case OPCODE_I32_CTZ: NOT_IMPLEMENTED();
+            case OPCODE_I32_POPCNT: NOT_IMPLEMENTED();
+            case OPCODE_I32_ADD: {
+                wasm_u32_t y = (*--stack).u32;
+                wasm_u32_t x = (*--stack).u32;
+                (*stack++).u32 = x + y;
+                code++;
+                break;
+            }
+            case OPCODE_I32_SUB: {
+                wasm_u32_t y = (*stack--).u32;
+                wasm_u32_t x = (*stack--).u32;
+                (*stack++).u32 = x - y;
+                code++;
+                break;
+            }
+            case OPCODE_I32_MUL: NOT_IMPLEMENTED();
+            case OPCODE_I32_DIV_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_DIV_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_REM_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_REM_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_AND: NOT_IMPLEMENTED();
+            case OPCODE_I32_OR: NOT_IMPLEMENTED();
+            case OPCODE_I32_XOR: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHL: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHR_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHR_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I64_CLZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_CTZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_POPCNT: NOT_IMPLEMENTED();
+            case OPCODE_I64_ADD: NOT_IMPLEMENTED();
+            case OPCODE_I64_SUB: NOT_IMPLEMENTED();
+            case OPCODE_I64_MUL: NOT_IMPLEMENTED();
+            case OPCODE_I64_DIV_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_DIV_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_REM_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_REM_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_AND: NOT_IMPLEMENTED();
+            case OPCODE_I64_OR: NOT_IMPLEMENTED();
+            case OPCODE_I64_XOR: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHL: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHR_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHR_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTL: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_F32_ABS: NOT_IMPLEMENTED();
+            case OPCODE_F32_NEG: NOT_IMPLEMENTED();
+            case OPCODE_F32_CEIL: NOT_IMPLEMENTED();
+            case OPCODE_F32_FLOOR: NOT_IMPLEMENTED();
+            case OPCODE_F32_TRUNC: NOT_IMPLEMENTED();
+            case OPCODE_F32_NEAREST: NOT_IMPLEMENTED();
+            case OPCODE_F32_SQRT: NOT_IMPLEMENTED();
+            case OPCODE_F32_ADD: NOT_IMPLEMENTED();
+            case OPCODE_F32_SUB: NOT_IMPLEMENTED();
+            case OPCODE_F32_MUL: NOT_IMPLEMENTED();
+            case OPCODE_F32_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F32_MIN: NOT_IMPLEMENTED();
+            case OPCODE_F32_MAX: NOT_IMPLEMENTED();
+            case OPCODE_F32_COPYSIGN: NOT_IMPLEMENTED();
+            case OPCODE_F64_ABS: NOT_IMPLEMENTED();
+            case OPCODE_F64_NEG: NOT_IMPLEMENTED();
+            case OPCODE_F64_CEIL: NOT_IMPLEMENTED();
+            case OPCODE_F64_FLOOR: NOT_IMPLEMENTED();
+            case OPCODE_F64_TRUNC: NOT_IMPLEMENTED();
+            case OPCODE_F64_NEAREST: NOT_IMPLEMENTED();
+            case OPCODE_F64_SQRT: NOT_IMPLEMENTED();
+            case OPCODE_F64_ADD: NOT_IMPLEMENTED();
+            case OPCODE_F64_SUB: NOT_IMPLEMENTED();
+            case OPCODE_F64_MUL: NOT_IMPLEMENTED();
+            case OPCODE_F64_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F64_MIN: NOT_IMPLEMENTED();
+            case OPCODE_F64_MAX: NOT_IMPLEMENTED();
+            case OPCODE_F64_COPYSIGN: NOT_IMPLEMENTED();
+            case OPCODE_WRAP_I64: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I64_S: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_DEMOTE_F64: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I64_S: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_PROMOTE_F32: NOT_IMPLEMENTED();
+            case OPCODE_I32_REINTERPRET_F32: NOT_IMPLEMENTED();
+            case OPCODE_I64_REINTERPRET_F64: NOT_IMPLEMENTED();
+            case OPCODE_F32_REINTERPRET_I32: NOT_IMPLEMENTED();
+            case OPCODE_F64_REINTERPRET_I64: NOT_IMPLEMENTED();
+            case OPCODE_I32_EXTEND8_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_EXTEND16_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND8_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND16_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F64_U: NOT_IMPLEMENTED();
+
             default:
                 LOG("unknown opcode");
                 return;
@@ -964,7 +1161,7 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
     }
 }
 
-int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
+int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],
                         wasm_u16_t result_stack_size) {
     wasmbox_function_t *func = wasmbox_module_find_entrypoint(mod);
     if (func == NULL) {
@@ -972,6 +1169,24 @@ int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t result[],
         return -1;
     }
     int num_of_returns = func->type->return_size;
-    wasmbox_eval_function(mod, func->code, result + num_of_returns - 1);
+    int num_of_arguments = func->type->argument_size;
+    // +-------------+-----------------+
+    // | stack - N   | return_val[N-1] |
+    // |    ...      |                 |
+    // | stack - 2   | return_val[1]   |
+    // | stack - 1   | return_val[0]   |
+    // | stack       | arguments[0]    |
+    // | stack + 1   | arguments[1]    |
+    // | stack + 2   | arguments[2]    |
+    // |    ...      |                 |
+    // | stack + N   | arguments[N]    |
+    // | stack + N+1 | local_val[0]    |
+    // |    ...      |                 |
+    // | stack + M+M | local_val[M-1]  |
+    // | stack + N+M | stack_top       |
+    // +-------------+-----------------+
+    wasmbox_value_t *arguments = stack /* ~ stack + num_of_arguments */;
+    wasmbox_value_t *stack_top = stack + num_of_arguments + func->locals;
+    wasmbox_eval_function(mod, func->code, arguments, stack_top);
     return 0;
 }
