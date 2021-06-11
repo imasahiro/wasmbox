@@ -71,7 +71,7 @@ int main(int argc, char const *argv[]) {
             break;
         }
         int j = 0;
-        char buf[1024];
+        char buf[1024] = {};
         int value_type = fgetc(fp);
         int ch = fgetc(fp);
         while (ch != EOF && ch != '\n') {
