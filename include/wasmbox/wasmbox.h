@@ -83,15 +83,20 @@ typedef struct wasmbox_type_t {
     wasmbox_value_type_t args[0];
 } wasmbox_type_t;
 
+struct wasmbox_code_operands {
+    wasmbox_value_t value;
+    wasm_u32_t index;
+    wasm_s32_t reg;
+};
+
 typedef struct wasmbox_code_t {
     union header {
         wasm_u16_t opcode;
         void *label;
     } h;
-    union body {
-        wasmbox_value_t value;
-        wasm_u32_t index;
-    } v;
+    struct wasmbox_code_operands op0;
+    struct wasmbox_code_operands op1;
+    struct wasmbox_code_operands op2;
 } wasmbox_code_t;
 
 typedef struct wasmbox_function_t {
@@ -102,6 +107,7 @@ typedef struct wasmbox_function_t {
     wasm_u16_t locals;
     wasm_u16_t code_size;
     wasm_u16_t code_capacity;
+    wasm_u16_t stack_top;
 } wasmbox_function_t;
 
 typedef struct wasmbox_module_t {
