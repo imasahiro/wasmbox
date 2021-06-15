@@ -310,6 +310,7 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_function_t *func, w
     return 0;
 }
 
+
 // INST(0x05, end)
 static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_code_t code;
@@ -743,7 +744,9 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
             return -1;
     }
     int is_const = mut == 0x01;
-    fprintf(stdout, "- %s type:%s\n", is_const ? "const" : "var", value_type_to_string(valtype));
+    if (0) {
+        fprintf(stdout, "- %s type:%s\n", is_const ? "const" : "var", value_type_to_string(valtype));
+    }
     wasmbox_function_t *global = mod->global_function;
     if (global == NULL) {
         global = mod->global_function = (wasmbox_function_t *) wasmbox_malloc(sizeof(*mod->global_function));
@@ -751,6 +754,10 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
         global->name = (wasmbox_name_t *) wasmbox_malloc(sizeof(*global->name) + len);
         global->name->len = len;
         memcpy(global->name->value, "__global__", len);
+    }
+    // We already compiled another global section. Erase last RETURN_VOID op to merge a global function to previous one.
+    if (global->code != NULL && global->code[global->code_size - 1].h.opcode == OPCODE_RETURN_VOID) {
+        global->code_size -= 1;
     }
     while (1) {
         wasm_u8_t next = wasmbox_input_stream_peek_u8(ins);
@@ -762,12 +769,20 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
             return -1;
         }
     }
+    wasmbox_code_t code;
+    code.h.opcode = OPCODE_RETURN_VOID;
+    wasmbox_code_add(global, &code);
     return 0;
 }
 
 static int parse_global_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "global (num:%llu)\n", len);
+    if (0) {
+        fprintf(stdout, "global (num:%llu)\n", len);
+    }
+    if (len > 0) {
+        mod->globals = wasmbox_malloc(sizeof(*mod->globals) * len);
+    }
     for (wasm_u64_t i = 0; i < len; i++) {
         if (parse_global_variable(ins, mod) != 0) {
             return -1;
@@ -899,49 +914,6 @@ static int parse_module(wasmbox_input_stream_t *ins, wasmbox_module_t *module) {
     return 0;
 }
 
-int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
-                        wasm_u16_t file_name_len) {
-    wasmbox_input_stream_t stream = {};
-    wasmbox_input_stream_t *ins = wasmbox_input_stream_open(&stream, file_name);
-    if (ins == NULL) {
-        LOG("Failed to load file");
-        return -1;
-    }
-    int parsed = parse_module(ins, mod);
-    if (parsed == 0) {
-        wasmbox_module_dump(mod);
-    }
-    wasmbox_input_stream_close(ins);
-    return parsed;
-}
-
-int wasmbox_module_dispose(wasmbox_module_t *mod) {
-    for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
-        wasmbox_free(mod->types[i]);
-    }
-    wasmbox_free(mod->types);
-    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-        wasmbox_free(mod->functions[i]->name);
-        wasmbox_free(mod->functions[i]);
-    }
-    wasmbox_free(mod->functions);
-    wasmbox_free(mod->global_function);
-    return 0;
-}
-
-static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
-{
-    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-        wasmbox_function_t *func = mod->functions[i];
-        wasm_u32_t start_len = strlen("_start");
-        if (func->name != NULL && func->name->len == start_len &&
-        strncmp((const char *) func->name->value, "_start", start_len) == 0) {
-            return func;
-        }
-    }
-    return NULL;
-}
-
 #define NOT_IMPLEMENTED() do { \
     LOG("not-implemented");    \
     return;                    \
@@ -963,6 +935,10 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_RETURN:
                 fprintf(stdout, "stack[%d].u64= stack[%d].u64\n", code->op0.reg, code->op1.reg);
                 stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
+                fprintf(stdout, "return\n");
+                return;
+            case OPCODE_RETURN_VOID:
+                fprintf(stdout, "return\n");
                 return;
             case OPCODE_LOCAL_GET:
                 fprintf(stdout, "stack[%d].u64= stack[%d].u64\n", code->op0.reg, code->op1.reg);
@@ -974,9 +950,15 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_LOCAL_TEE:
                 NOT_IMPLEMENTED();
             case OPCODE_GLOBAL_GET:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u64= global[%d].u64\n", code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u64 = mod->globals[code->op1.reg].u64;
+                code++;
+                break;
             case OPCODE_GLOBAL_SET:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "global[%d].u64= stack[%d].u64\n", code->op0.reg, code->op1.reg);
+                mod->globals[code->op0.reg].u64 = stack[code->op1.reg].u64;
+                code++;
+                break;
             case OPCODE_I32_LOAD:
                 NOT_IMPLEMENTED();
             case OPCODE_I64_LOAD:
@@ -1256,6 +1238,52 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 return;
         }
     }
+}
+
+int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
+                        wasm_u16_t file_name_len) {
+    wasmbox_input_stream_t stream = {};
+    wasmbox_input_stream_t *ins = wasmbox_input_stream_open(&stream, file_name);
+    if (ins == NULL) {
+        LOG("Failed to load file");
+        return -1;
+    }
+    int parsed = parse_module(ins, mod);
+    if (parsed == 0) {
+        wasmbox_module_dump(mod);
+        if (mod->global_function != NULL && mod->global_function->code != NULL) {
+            wasmbox_eval_function(mod, mod->global_function->code, mod->globals);
+        }
+    }
+    wasmbox_input_stream_close(ins);
+    return parsed;
+}
+
+int wasmbox_module_dispose(wasmbox_module_t *mod) {
+    for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
+        wasmbox_free(mod->types[i]);
+    }
+    wasmbox_free(mod->types);
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        wasmbox_free(mod->functions[i]->name);
+        wasmbox_free(mod->functions[i]);
+    }
+    wasmbox_free(mod->functions);
+    wasmbox_free(mod->global_function);
+    return 0;
+}
+
+static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
+{
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        wasmbox_function_t *func = mod->functions[i];
+        wasm_u32_t start_len = strlen("_start");
+        if (func->name != NULL && func->name->len == start_len &&
+            strncmp((const char *) func->name->value, "_start", start_len) == 0) {
+            return func;
+        }
+    }
+    return NULL;
 }
 
 int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],

@@ -114,6 +114,8 @@ typedef struct wasmbox_module_t {
     wasmbox_function_t **functions;
     wasm_u32_t function_size;
     wasm_u32_t function_capacity;
+    wasmbox_value_t *globals;
+    wasm_u32_t global_size;
     wasmbox_function_t *global_function;
     wasmbox_type_t **types;
     wasm_u32_t type_size;
