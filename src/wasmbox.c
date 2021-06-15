@@ -18,22 +18,12 @@
 #include "input-stream.h"
 #include "leb128.h"
 #include "opcodes.h"
+#include "allocator.h"
 #include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__);
-
-static inline void *wasmbox_malloc(wasm_u32_t size) {
-    void *mem = malloc(size);
-    bzero(mem, size);
-    return mem;
-}
-
-static inline void wasmbox_free(void *ptr) {
-    free(ptr);
-}
 
 /* Module API */
 #define MODULE_TYPES_INIT_SIZE 4
