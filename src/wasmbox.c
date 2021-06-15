@@ -83,7 +83,7 @@ static void wasmbox_code_add_variable(wasmbox_function_t *func, int vmopcode, wa
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
     code.op0.reg = func->stack_top++;
-    code.op1.index = index;
+    code.op1.reg = index;
     wasmbox_code_add(func, &code);
 }
 
