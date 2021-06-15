@@ -1044,28 +1044,47 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_LOAD_CONST_F64:
                 LOAD_CONST_OP(f64, "%g");
                 break;
+#define ARITHMETIC_OP(type, operand, operand_str) do { \
+    fprintf(stdout, "stack[%d]." # type "= stack[%d]." # type " " operand_str " stack[%d]." #type "\n", \
+            code->op0.reg, code->op2.reg, code->op1.reg);                                               \
+    stack[code->op0.reg].type = stack[code->op1.reg].type operand stack[code->op2.reg].type;            \
+    code++;                                                                                             \
+} while (0)
             case OPCODE_I32_EQZ:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32= stack[%d].u32 == 0\n",code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u32 = stack[code->op1.reg].u32 == 0;
+                code++;
+                break;
             case OPCODE_I32_EQ:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, ==, "==");
+                break;
             case OPCODE_I32_NE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, !=, "!=");
+                break;
             case OPCODE_I32_LT_S:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, <, "<");
+                break;
             case OPCODE_I32_LT_U:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(u32, <, "<");
+                break;
             case OPCODE_I32_GT_S:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, >, ">");
+                break;
             case OPCODE_I32_GT_U:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(u32, >, ">");
+                break;
             case OPCODE_I32_LE_S:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, <=, "<=");
+                break;
             case OPCODE_I32_LE_U:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(u32, <=, "<=");
+                break;
             case OPCODE_I32_GE_S:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(s32, >=, ">=");
+                break;
             case OPCODE_I32_GE_U:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP(u32, >=, ">=");
+                break;
             case OPCODE_I64_EQZ:
                 NOT_IMPLEMENTED();
             case OPCODE_I64_EQ:
@@ -1118,12 +1137,6 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 NOT_IMPLEMENTED();
             case OPCODE_I32_POPCNT:
                 NOT_IMPLEMENTED();
-#define ARITHMETIC_OP(type, operand, operand_str) do { \
-    fprintf(stdout, "stack[%d]." # type "= stack[%d]." # type " " operand_str " stack[%d]." #type "\n", \
-            code->op0.reg, code->op2.reg, code->op1.reg);                                               \
-    stack[code->op0.reg].type = stack[code->op1.reg].type operand stack[code->op2.reg].type;            \
-    code++;                                                                                             \
-} while (0)
             case OPCODE_I32_ADD:
                 ARITHMETIC_OP(u32, +, "+");
                 break;
