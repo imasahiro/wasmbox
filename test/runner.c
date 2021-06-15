@@ -60,7 +60,7 @@ int main(int argc, char const *argv[]) {
     FILE *fp = fopen(argv[2], "r");
     wasmbox_module_t mod = {};
     int stack_index = 0;
-    wasmbox_value_t stack[10] = {};
+    wasmbox_value_t stack[20] = {};
     int expected_index = 0;
     wasmbox_value_t expected[10] = {};
     wasmbox_value_type_t expected_type[10] = {};
@@ -102,7 +102,7 @@ int main(int argc, char const *argv[]) {
                 return -1;
         }
         if (io == '>') {
-            stack[stack_index++] = v;
+            WASMBOX_ADD_ARGUMENT(stack, stack_index++, u64, v.u64);
         } else if (io == '<') {
             expected[expected_index] = v;
             expected_type[expected_index++] = type;

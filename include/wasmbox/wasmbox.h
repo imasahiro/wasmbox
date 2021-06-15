@@ -24,16 +24,16 @@
 extern "C" {
 #endif
 
-typedef uint8_t  wasm_u8_t;
-typedef int8_t   wasm_s8_t;
+typedef uint8_t wasm_u8_t;
+typedef int8_t wasm_s8_t;
 typedef uint16_t wasm_u16_t;
-typedef int16_t  wasm_s16_t;
+typedef int16_t wasm_s16_t;
 typedef uint32_t wasm_u32_t;
-typedef int32_t  wasm_s32_t;
+typedef int32_t wasm_s32_t;
 typedef uint64_t wasm_u64_t;
-typedef int64_t  wasm_s64_t;
-typedef float    wasm_f32_t;
-typedef double   wasm_f64_t;
+typedef int64_t wasm_s64_t;
+typedef float wasm_f32_t;
+typedef double wasm_f64_t;
 
 #define WASM_U8_MAX (UCHAR_MAX)
 #define WASM_S8_MAX (SCHAR_MAX)
@@ -83,21 +83,7 @@ typedef struct wasmbox_type_t {
     wasmbox_value_type_t args[0];
 } wasmbox_type_t;
 
-struct wasmbox_code_operands {
-    wasmbox_value_t value;
-    wasm_u32_t index;
-    wasm_s32_t reg;
-};
-
-typedef struct wasmbox_code_t {
-    union header {
-        wasm_u16_t opcode;
-        void *label;
-    } h;
-    struct wasmbox_code_operands op0;
-    struct wasmbox_code_operands op1;
-    struct wasmbox_code_operands op2;
-} wasmbox_code_t;
+typedef struct wasmbox_code_t wasmbox_code_t;
 
 typedef struct wasmbox_function_t {
     wasmbox_code_t *code;
@@ -109,6 +95,64 @@ typedef struct wasmbox_function_t {
     wasm_u16_t code_capacity;
     wasm_u16_t stack_top;
 } wasmbox_function_t;
+
+union wasmbox_code_operands {
+    wasmbox_value_t value;
+    wasm_u32_t index;
+    wasm_s32_t reg;
+    wasmbox_function_t *func;
+};
+
+/**
+ * WasmBox stack from design.
+ * We share single stack for operand stack and value stack. When
+ * we call a function which has A+1 arguments and R+1 returns, and
+ * has L local values, like following, the stack will be used as following table.
+ * <pre>{@code
+ * function func(arg0, arg1, ..., argA) {
+ *      var local0, local1, ..., localL;
+ *      return (return0, return1, ..., returnR);
+ * }
+ * }</pre>
+ * <pre>
+ * +-------------+-------------+----------------+
+ * +  Caller     + Callee      +                +
+ * +-------------+-------------+----------------+
+ * | stack-R     | stack-2-R   | returnR        |
+ * |    ...      |    ...      |                |
+ * | stack-2     | stack-4     | return1        |
+ * | stack-1     | stack-3     | return0        |
+ * | stack_top   | stack-2     | &prev_stack_top|
+ * | stack+1     | stack-1     | next_pc        |
+ * | stack+2     | stack_top   | arg0           |
+ * | stack+3     | stack+1     | arg1           |
+ * | stack+4     | stack+2     | arg2           |
+ * |    ...      |    ...      |                |
+ * | stack+A+2   | stack+A     | argA           |
+ * | stack+A+3   | stack+A+1   | local0         |
+ * |    ...      |    ...      |                |
+ * | stack+A+L+2 | stack+A+L   | localL         |
+ * | stack+A+L+3 | stack+A+L+1 | stack_top      |
+ * +-------------+-------------+----------------+
+ * </pre>
+ */
+typedef wasmbox_value_t wasmbox_stack_t;
+
+#define WASMBOX_FUNCTION_CALL_OFFSET (2)
+
+#define WASMBOX_ADD_ARGUMENT(STACK, INDEX, TYPE, V) do {            \
+    (STACK)[WASMBOX_FUNCTION_CALL_OFFSET + 1 + (INDEX)].TYPE = (V); \
+} while (0)
+
+struct wasmbox_code_t {
+    union header {
+        wasm_u16_t opcode;
+        void *label;
+    } h;
+    union wasmbox_code_operands op0;
+    union wasmbox_code_operands op1;
+    union wasmbox_code_operands op2;
+};
 
 typedef struct wasmbox_module_t {
     wasmbox_function_t **functions;

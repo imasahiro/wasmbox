@@ -24,7 +24,8 @@
 extern "C" {
 #endif
 
-typedef int (*wasmbox_op_decode_func_t)(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op);
+typedef int (*wasmbox_op_decode_func_t)(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                        wasmbox_function_t *func, wasm_u8_t op);
 
 typedef struct wasmbox_op_decorder_t {
     wasm_u8_t lower;
@@ -250,8 +251,17 @@ enum wasmbox_opcode {
     CONST_OP_EACH(FUNC5)
     SATURATING_TRUNCATION_INST_EACH(FUNC5)
 #undef FUNC5
+    /**
+     * Exist from virtual machine.
+     */
+    OPCODE_EXIT,
+    /**
+     * Leaves from currently executing function and resume callee code.
+     */
     OPCODE_RETURN,
-    OPCODE_RETURN_VOID
+    OPCODE_MOVE,
+    OPCODE_DYNAMIC_CALL,
+    OPCODE_STATIC_CALL
 };
 
 #define WASMBOX_VM_DEBUG 1
@@ -269,7 +279,11 @@ static const char *debug_opcodes[] = {
     CONST_OP_EACH(FUNC5)
     SATURATING_TRUNCATION_INST_EACH(FUNC5)
 #undef FUNC5
-    "OPCODE_RETURN"
+    "OPCODE_EXIT",
+    "OPCODE_RETURN",
+    "OPCODE_MOVE",
+    "OPCODE_DYNAMIC_CALL",
+    "OPCODE_STATIC_CALL"
 };
 #endif /* WASMBOX_VM_DEBUG */
 

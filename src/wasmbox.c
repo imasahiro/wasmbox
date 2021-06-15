@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__);
+#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__)
 
 /* Module API */
 #define MODULE_TYPES_INIT_SIZE 4
@@ -83,7 +83,11 @@ static void wasmbox_code_add_variable(wasmbox_function_t *func, int vmopcode, wa
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
     code.op0.reg = func->stack_top++;
-    code.op1.reg = index;
+    if (vmopcode == OPCODE_GLOBAL_GET || vmopcode == OPCODE_GLOBAL_SET) {
+        code.op1.index = index;
+    } else {
+        code.op1.index = WASMBOX_FUNCTION_CALL_OFFSET + index;
+    }
     wasmbox_code_add(func, &code);
 }
 
@@ -96,6 +100,14 @@ static int wasmbox_code_add_binary_op(wasmbox_function_t *func, int vmopcode) {
     code.op2.reg = current_stack_top - 1;
     wasmbox_code_add(func, &code);
     return 0;
+}
+
+static void wasmbox_code_add_move(wasmbox_function_t *func, wasm_s32_t from, wasm_s32_t to) {
+    wasmbox_code_t code;
+    code.h.opcode = OPCODE_MOVE;
+    code.op0.reg = to;
+    code.op1.reg = from;
+    wasmbox_code_add(func, &code);
 }
 
 #define TYPE_EACH(FUNC) \
@@ -141,28 +153,7 @@ static int print_function(wasmbox_function_t *func, wasm_u32_t index) {
     if (func->type) {
         print_function_type(func->type);
     }
-    fprintf(stdout, " {}");
     return 0;
-}
-
-static void wasmbox_module_dump(wasmbox_module_t *mod)
-{
-    fprintf(stdout, "module %p {\n", mod);
-    if (0) {
-        for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
-            print_function_type(mod->types[i]);
-            fprintf(stdout, "\n");
-        }
-    }
-    if (mod->global_function) {
-        print_function(mod->global_function, 0);
-        fprintf(stdout, "\n");
-    }
-    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-        print_function(mod->functions[i], i);
-        fprintf(stdout, "\n");
-    }
-    fprintf(stdout, "}\n");
 }
 
 static int parse_magic(wasmbox_input_stream_t *ins) {
@@ -186,7 +177,6 @@ static int dump_binary(wasmbox_input_stream_t *ins, wasm_u64_t size) {
 
 static int parse_custom_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     // XXX Current we just skip custom section since it would not affect to other sections.
-    //fprintf(stdout, "custom %llu\n", section_size);
     dump_binary(ins, section_size);
     ins->index += section_size;
     return 0;
@@ -203,7 +193,7 @@ static int parse_value_type(wasmbox_input_stream_t *ins, wasmbox_value_type_t *t
 #undef FUNC
         default:
             // unreachable
-            LOG("unknown type")
+            LOG("unknown type");
             return -1;
     }
 }
@@ -278,11 +268,11 @@ static int parse_blocktype(wasmbox_input_stream_t *ins, wasmbox_blocktype_t *typ
     }
 }
 
-static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_function_t *func);
+static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func);
 
 // INST(0x02 bt:blocktype (in:instr)* 0x0B, block bt in* end)
 // INST(0x03 bt:blocktype (in:instr)* 0x0B, loop bt in* end)
-static int decode_block(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_blocktype_t blocktype;
     if (parse_blocktype(ins, &blocktype)) {
         return -1;
@@ -303,7 +293,7 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_function_t *func, w
             wasmbox_input_stream_read_u8(ins);
             break;
         }
-        if (parse_instruction(ins, func)) {
+        if (parse_instruction(ins, mod, func)) {
             return -1;
         }
     }
@@ -312,18 +302,17 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_function_t *func, w
 
 
 // INST(0x05, end)
-static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_code_t code;
+    wasmbox_code_add_move(func, func->stack_top - 1, -1);
     code.h.opcode = OPCODE_RETURN;
-    code.op0.reg = 0;
-    code.op1.reg = func->stack_top - 1;
     wasmbox_code_add(func, &code);
     return 0;
 }
 
 // INST(0x04 bt:blocktype (in:instr)* 0x0B, if bt in* end)
 // INST(0x04 bt:blocktype (in:instr)* 0x05 (in2:instr)* 0x0B, if bt in1* else in2* end)
-static int decode_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_blocktype_t blocktype;
     if (parse_blocktype(ins, &blocktype)) {
         return -1;
@@ -341,7 +330,7 @@ static int decode_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm
             wasmbox_input_stream_read_u8(ins);
             continue;
         }
-        if (parse_instruction(ins, func)) {
+        if (parse_instruction(ins, mod, func)) {
             return -1;
         }
     }
@@ -349,21 +338,21 @@ static int decode_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm
 }
 
 // INST(0x0C l:labelidx, br l)
-static int decode_br(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_br(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "br %llu\n", labelidx);
     return 0;
 }
 
 // INST(0x0D l:labelidx, br_if l)
-static int decode_br_if(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_br_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "br_if %llu\n", labelidx);
     return 0;
 }
 
 // INST(0x0E l:vec(labelidx) lN:labelidx, br_table l* lN)
-static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     fprintf(stdout, "br_table l:(");
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     for (wasm_u64_t i = 0; i < len; i++) {
@@ -379,27 +368,44 @@ static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_function_t *func
 }
 
 // INST(0x0F, return)
-static int decode_return(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_return(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     fprintf(stdout, "return\n");
     return 0;
 }
 
 // BLOCK_INST(0x11, x:typeidx 0x00, call_indirect x)
-static int decode_call(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_call(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t funcidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "call %llu\n", funcidx);
+    wasmbox_function_t *call = mod->functions[funcidx];
+    if (call == NULL) {
+        LOG("Failed to find function\n");
+        return -1;
+    }
+    wasm_u16_t argument_from = func->stack_top - call->type->argument_size;
+    wasm_u16_t argument_to = func->stack_top + call->type->return_size + WASMBOX_FUNCTION_CALL_OFFSET;
+    for (int i = 0; i < call->type->argument_size; ++i) {
+        wasmbox_code_add_move(func, argument_from - i, argument_to + i);
+    }
+    wasmbox_code_t code;
+    code.h.opcode = OPCODE_STATIC_CALL;
+    code.op0.reg = func->stack_top;
+    func->stack_top += call->type->return_size;
+    code.op1.func = mod->functions[funcidx];
+    wasmbox_code_add(func, &code);
     return 0;
 }
 
 // INST(0x11 x:typeidx 0x00, call_indirect x)
-static int decode_call_indirect(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_call_indirect(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t typeidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     fprintf(stdout, "call_indirect %llu\n", typeidx);
     return 0;
 }
 
 
-static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     switch (op) {
 #define FUNC(opcode, param, type, inst, vmopcode) case (opcode): { \
@@ -420,7 +426,8 @@ static int parse_memarg(wasmbox_input_stream_t *ins, wasm_u64_t *align, wasm_u64
     return 0;
 }
 
-static int decode_memory_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_memory_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                              wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t align;
     wasm_u64_t offset;
     if (parse_memarg(ins, &align, &offset)) {
@@ -439,7 +446,8 @@ static int decode_memory_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *f
     return 0;
 }
 
-static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                       wasmbox_function_t *func, wasm_u8_t op) {
     if (wasmbox_input_stream_read_u8(ins) != 0x00) {
         return -1;
     }
@@ -479,7 +487,8 @@ static void parse_f64_const(wasmbox_input_stream_t *ins, wasmbox_value_t *v)
 }
 
 /* Numeric Instructions */
-static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                wasmbox_function_t *func, wasm_u8_t op) {
     wasmbox_value_t v;
     switch (op) {
 #define FUNC(opcode, type, inst, attr, vmopcode) case (opcode): { \
@@ -495,7 +504,7 @@ static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_function_t 
     return -1;
 }
 
-static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
     switch (op) {
 #define FUNC(opcode, type, inst, vmopcode) case (opcode): { \
     fprintf(stdout, "" #type "." # inst "\n"); \
@@ -514,7 +523,8 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func
     return -1;
 }
 
-static int decode_truncation_inst(wasmbox_input_stream_t *ins, wasmbox_function_t *func, wasm_u8_t op) {
+static int decode_truncation_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                                  wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u8_t op1 = wasmbox_input_stream_read_u8(ins);
     switch (op1) {
 #define FUNC(opcode0, opcode1, type, inst, vmopcode) case opcode1: { \
@@ -549,12 +559,12 @@ static const wasmbox_op_decorder_t decoders[] = {
         {0xFC, 0xFC, decode_truncation_inst}
 };
 
-static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_function_t *func) {
+static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func) {
     wasm_u8_t op = wasmbox_input_stream_read_u8(ins);
     for (int i = 0; i < sizeof(decoders) / sizeof(decoders[0]); i++) {
         const wasmbox_op_decorder_t d = decoders[i];
         if (d.lower <= op && op <= d.upper) {
-            return d.func(ins, func, op);
+            return d.func(ins, mod, func, op);
         }
     }
     return -1;
@@ -564,7 +574,7 @@ static int parse_code(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                       wasmbox_function_t *func, wasm_u64_t codelen) {
     wasm_u64_t end = ins->index + codelen;
     while (ins->index < end) {
-        if (parse_instruction(ins, func)) {
+        if (parse_instruction(ins, mod, func)) {
             return -1;
         }
     }
@@ -698,7 +708,7 @@ static int parse_function_section(wasmbox_input_stream_t *ins, wasm_u64_t sectio
         wasm_u32_t v = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
         wasmbox_function_t *func = (wasmbox_function_t *) wasmbox_malloc(sizeof(*func));
         func->type = mod->types[v];
-        func->stack_top = func->type->argument_size;
+        func->stack_top = WASMBOX_FUNCTION_CALL_OFFSET + func->type->argument_size;
         wasmbox_module_register_new_function(mod, func);
     }
     return 0;
@@ -755,8 +765,8 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
         global->name->len = len;
         memcpy(global->name->value, "__global__", len);
     }
-    // We already compiled another global section. Erase last RETURN_VOID op to merge a global function to previous one.
-    if (global->code != NULL && global->code[global->code_size - 1].h.opcode == OPCODE_RETURN_VOID) {
+    // We already compiled another global section. Erase last EXIT op to merge a global function to previous one.
+    if (global->code != NULL && global->code[global->code_size - 1].h.opcode == OPCODE_EXIT) {
         global->code_size -= 1;
     }
     while (1) {
@@ -765,12 +775,12 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
             wasmbox_input_stream_read_u8(ins);
             break;
         }
-        if (parse_instruction(ins, global)) {
+        if (parse_instruction(ins, mod, global)) {
             return -1;
         }
     }
     wasmbox_code_t code;
-    code.h.opcode = OPCODE_RETURN_VOID;
+    code.h.opcode = OPCODE_EXIT;
     wasmbox_code_add(global, &code);
     return 0;
 }
@@ -899,11 +909,11 @@ static int parse_section(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
 
 static int parse_module(wasmbox_input_stream_t *ins, wasmbox_module_t *module) {
     if (parse_magic(ins) != 0) {
-        LOG("Invalid magic number")
+        LOG("Invalid magic number");
         return -1;
     }
     if (parse_version(ins) != 0) {
-        LOG("Invalid version number")
+        LOG("Invalid version number");
         return -1;
     }
     while (!wasmbox_input_stream_is_end_of_stream(ins)) {
@@ -919,10 +929,13 @@ static int parse_module(wasmbox_input_stream_t *ins, wasmbox_module_t *module) {
     return;                    \
 } while (0)
 
+static void dump_stack(wasmbox_value_t *stack);
+
 static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
     while (1) {
-        //fprintf(stdout, "opcode: %s\n", debug_opcodes[code->h.opcode]);
+        dump_stack(stack);
+        fprintf(stdout, "op:%s (%p)\n", debug_opcodes[code->h.opcode], code);
         switch (code->h.opcode) {
             case OPCODE_UNREACHABLE:
                 NOT_IMPLEMENTED();
@@ -932,16 +945,45 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 NOT_IMPLEMENTED();
             case OPCODE_SELECT:
                 NOT_IMPLEMENTED();
+            case OPCODE_EXIT:
+                fprintf(stdout, "exit\n");
+                return;
             case OPCODE_RETURN:
+                fprintf(stdout, "return; stack:%p->%p (diff:%d), code:%p->%p\n",
+                        stack, (wasmbox_value_t *) stack[0].u64,
+                        (int) (stack - (wasmbox_value_t *) (uintptr_t) stack[0].u64),
+                        code, (wasmbox_code_t *) stack[1].u64);
+                code = (wasmbox_code_t *) stack[1].u64;
+                stack = (wasmbox_value_t *) stack[0].u64;
+                break;
+            case OPCODE_MOVE:
                 fprintf(stdout, "stack[%d].u64= stack[%d].u64\n", code->op0.reg, code->op1.reg);
                 stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
-                fprintf(stdout, "return\n");
-                return;
-            case OPCODE_RETURN_VOID:
-                fprintf(stdout, "return\n");
-                return;
+                code++;
+                break;
+            case OPCODE_DYNAMIC_CALL: {
+                fprintf(stdout, "stack[%d].u64= func%u()\n", code->op0.reg, code->op1.index);
+                wasmbox_function_t *func = mod->functions[code->op1.index];
+                code->h.opcode = OPCODE_STATIC_CALL;
+                code->op1.func = func;
+                /* Re-execute */
+                break;
+            }
+            case OPCODE_STATIC_CALL: {
+                fprintf(stdout, "stack[%d].u64= func%p()\n", code->op0.reg, code->op1.func);
+                wasmbox_function_t *func = code->op1.func;
+                wasmbox_value_t *stack_top = &stack[code->op0.reg] + func->type->return_size;
+                stack_top[0].u64 = (wasm_u64_t) (uintptr_t) stack;
+                stack_top[1].u64 = (wasm_u64_t) (uintptr_t) (code + 1);
+                fprintf(stdout, "call stack:%p->%p, code:%p->%p\n",stack, stack_top + WASMBOX_FUNCTION_CALL_OFFSET,
+                        code, func->code);
+                stack = stack_top;
+                code = func->code;
+                break;
+            }
             case OPCODE_LOCAL_GET:
-                fprintf(stdout, "stack[%d].u64= stack[%d].u64\n", code->op0.reg, code->op1.reg);
+                fprintf(stdout, "stack[%d].u64= stack[%d].u64(%llu)\n",
+                        code->op0.reg, code->op1.reg, stack[code->op1.reg].u64);
                 stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
                 code++;
                 break;
@@ -1027,8 +1069,9 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 LOAD_CONST_OP(f64, "%g");
                 break;
 #define ARITHMETIC_OP(type, operand, operand_str) do { \
-    fprintf(stdout, "stack[%d]." # type "= stack[%d]." # type " " operand_str " stack[%d]." #type "\n", \
-            code->op0.reg, code->op2.reg, code->op1.reg);                                               \
+    fprintf(stdout, "stack[%d]." # type " = stack[%d]." # type "(%d) " operand_str " stack[%d]." #type "(%d)\n", \
+            code->op0.reg, code->op1.reg, stack[code->op1.reg].type,                                             \
+            code->op2.reg, stack[code->op2.reg].type);                                               \
     stack[code->op0.reg].type = stack[code->op1.reg].type operand stack[code->op2.reg].type;            \
     code++;                                                                                             \
 } while (0)
@@ -1240,6 +1283,341 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
     }
 }
 
+static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
+{
+    while (1) {
+        switch (code->h.opcode) {
+            case OPCODE_UNREACHABLE:
+            case OPCODE_NOP:
+            case OPCODE_DROP:
+            case OPCODE_SELECT:
+            case OPCODE_EXIT:
+                fprintf(stdout, "%s%p %s ", indent, code, debug_opcodes[code->h.opcode]);
+                return;
+            case OPCODE_RETURN:
+                fprintf(stdout, "%sreturn;\n", indent);
+                return;
+            case OPCODE_MOVE:
+                fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_DYNAMIC_CALL:
+                fprintf(stdout, "%sstack[%d].u64= func%u()\n", indent, code->op0.reg, code->op1.index);
+                break;
+            case OPCODE_STATIC_CALL:
+                fprintf(stdout, "%sstack[%d].u64= func%p([args:%d, returns:%d])\n", indent,
+                        code->op0.reg, code->op1.func,code->op1.func->type->argument_size,
+                        code->op1.func->type->argument_size);
+                break;
+            case OPCODE_LOCAL_GET:
+                fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_LOCAL_SET:
+                NOT_IMPLEMENTED();
+            case OPCODE_LOCAL_TEE:
+                NOT_IMPLEMENTED();
+            case OPCODE_GLOBAL_GET:
+                fprintf(stdout, "%sstack[%d].u64= global[%d].u64\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_GLOBAL_SET:
+                fprintf(stdout, "%sglobal[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_I32_LOAD:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_LOAD:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_LOAD:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD8_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD8_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD16_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_LOAD16_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD8_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD8_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD16_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD16_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD32_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LOAD32_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_STORE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_STORE:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE8:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_STORE16:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE8:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE16:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_STORE32:
+                NOT_IMPLEMENTED();
+            case OPCODE_MEMORY_SIZE:
+                NOT_IMPLEMENTED();
+            case OPCODE_MEMORY_GROW:
+                NOT_IMPLEMENTED();
+#define DUMP_LOAD_CONST_OP(type, formatter) \
+    fprintf(stdout, "%sstack[%d]." # type "= " formatter "\n", indent, code->op0.reg, code->op1.value.type)
+            case OPCODE_LOAD_CONST_I32:
+                DUMP_LOAD_CONST_OP(u32, "%d");
+                break;
+            case OPCODE_LOAD_CONST_I64:
+                DUMP_LOAD_CONST_OP(u64, "%lld");
+                break;
+            case OPCODE_LOAD_CONST_F32:
+                DUMP_LOAD_CONST_OP(f32, "%f");
+                break;
+            case OPCODE_LOAD_CONST_F64:
+                DUMP_LOAD_CONST_OP(f64, "%g");
+                break;
+#define DUMP_ARITHMETIC_OP(type, operand, operand_str) \
+    fprintf(stdout, "%sstack[%d]." # type "= stack[%d]." # type " " operand_str " stack[%d]." #type "\n", \
+            indent, code->op0.reg, code->op2.reg, code->op1.reg)
+
+            case OPCODE_I32_EQZ:
+                fprintf(stdout, "%sstack[%d].u32= stack[%d].u32 == 0\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_I32_EQ:
+                DUMP_ARITHMETIC_OP(s32, ==, "==");
+                break;
+            case OPCODE_I32_NE:
+                DUMP_ARITHMETIC_OP(s32, !=, "!=");
+                break;
+            case OPCODE_I32_LT_S:
+                DUMP_ARITHMETIC_OP(s32, <, "<");
+                break;
+            case OPCODE_I32_LT_U:
+                DUMP_ARITHMETIC_OP(u32, <, "<");
+                break;
+            case OPCODE_I32_GT_S:
+                DUMP_ARITHMETIC_OP(s32, >, ">");
+                break;
+            case OPCODE_I32_GT_U:
+                DUMP_ARITHMETIC_OP(u32, >, ">");
+                break;
+            case OPCODE_I32_LE_S:
+                DUMP_ARITHMETIC_OP(s32, <=, "<=");
+                break;
+            case OPCODE_I32_LE_U:
+                DUMP_ARITHMETIC_OP(u32, <=, "<=");
+                break;
+            case OPCODE_I32_GE_S:
+                DUMP_ARITHMETIC_OP(s32, >=, ">=");
+                break;
+            case OPCODE_I32_GE_U:
+                DUMP_ARITHMETIC_OP(u32, >=, ">=");
+                break;
+            case OPCODE_I64_EQZ:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_EQ:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_NE:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LT_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LT_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_GT_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_GT_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LE_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_LE_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_GE_S:
+                NOT_IMPLEMENTED();
+            case OPCODE_I64_GE_U:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_EQ:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_NE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_LT:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_GT:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_LE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F32_GE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_EQ:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_NE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_LT:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_GT:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_LE:
+                NOT_IMPLEMENTED();
+            case OPCODE_F64_GE:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_CLZ:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_CTZ:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_POPCNT:
+                NOT_IMPLEMENTED();
+            case OPCODE_I32_ADD:
+                DUMP_ARITHMETIC_OP(u32, +, "+");
+                break;
+            case OPCODE_I32_SUB:
+                DUMP_ARITHMETIC_OP(u32, -, "-");
+                break;
+            case OPCODE_I32_MUL:
+                DUMP_ARITHMETIC_OP(u32, *, "*");
+                break;
+            case OPCODE_I32_DIV_S:
+                DUMP_ARITHMETIC_OP(s32, /, "/");
+                break;
+            case OPCODE_I32_DIV_U:
+                DUMP_ARITHMETIC_OP(u32, /, "/");
+                break;
+            case OPCODE_I32_REM_S:
+                DUMP_ARITHMETIC_OP(s32, %, "%%");
+                break;
+            case OPCODE_I32_REM_U:
+                DUMP_ARITHMETIC_OP(u32, %, "%%");
+                break;
+            case OPCODE_I32_AND: NOT_IMPLEMENTED();
+            case OPCODE_I32_OR: NOT_IMPLEMENTED();
+            case OPCODE_I32_XOR: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHL: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHR_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_SHR_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I64_CLZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_CTZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_POPCNT: NOT_IMPLEMENTED();
+            case OPCODE_I64_ADD: NOT_IMPLEMENTED();
+            case OPCODE_I64_SUB: NOT_IMPLEMENTED();
+            case OPCODE_I64_MUL: NOT_IMPLEMENTED();
+            case OPCODE_I64_DIV_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_DIV_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_REM_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_REM_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_AND: NOT_IMPLEMENTED();
+            case OPCODE_I64_OR: NOT_IMPLEMENTED();
+            case OPCODE_I64_XOR: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHL: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHR_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_SHR_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTL: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_F32_ABS: NOT_IMPLEMENTED();
+            case OPCODE_F32_NEG: NOT_IMPLEMENTED();
+            case OPCODE_F32_CEIL: NOT_IMPLEMENTED();
+            case OPCODE_F32_FLOOR: NOT_IMPLEMENTED();
+            case OPCODE_F32_TRUNC: NOT_IMPLEMENTED();
+            case OPCODE_F32_NEAREST: NOT_IMPLEMENTED();
+            case OPCODE_F32_SQRT: NOT_IMPLEMENTED();
+            case OPCODE_F32_ADD: NOT_IMPLEMENTED();
+            case OPCODE_F32_SUB: NOT_IMPLEMENTED();
+            case OPCODE_F32_MUL: NOT_IMPLEMENTED();
+            case OPCODE_F32_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F32_MIN: NOT_IMPLEMENTED();
+            case OPCODE_F32_MAX: NOT_IMPLEMENTED();
+            case OPCODE_F32_COPYSIGN: NOT_IMPLEMENTED();
+            case OPCODE_F64_ABS: NOT_IMPLEMENTED();
+            case OPCODE_F64_NEG: NOT_IMPLEMENTED();
+            case OPCODE_F64_CEIL: NOT_IMPLEMENTED();
+            case OPCODE_F64_FLOOR: NOT_IMPLEMENTED();
+            case OPCODE_F64_TRUNC: NOT_IMPLEMENTED();
+            case OPCODE_F64_NEAREST: NOT_IMPLEMENTED();
+            case OPCODE_F64_SQRT: NOT_IMPLEMENTED();
+            case OPCODE_F64_ADD: NOT_IMPLEMENTED();
+            case OPCODE_F64_SUB: NOT_IMPLEMENTED();
+            case OPCODE_F64_MUL: NOT_IMPLEMENTED();
+            case OPCODE_F64_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F64_MIN: NOT_IMPLEMENTED();
+            case OPCODE_F64_MAX: NOT_IMPLEMENTED();
+            case OPCODE_F64_COPYSIGN: NOT_IMPLEMENTED();
+            case OPCODE_WRAP_I64: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I64_S: NOT_IMPLEMENTED();
+            case OPCODE_F32_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F32_DEMOTE_F64: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_S: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I64_S: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_PROMOTE_F32: NOT_IMPLEMENTED();
+            case OPCODE_I32_REINTERPRET_F32: NOT_IMPLEMENTED();
+            case OPCODE_I64_REINTERPRET_F64: NOT_IMPLEMENTED();
+            case OPCODE_F32_REINTERPRET_I32: NOT_IMPLEMENTED();
+            case OPCODE_F64_REINTERPRET_I64: NOT_IMPLEMENTED();
+            case OPCODE_I32_EXTEND8_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_EXTEND16_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND8_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND16_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_EXTEND32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_TRUNC_SAT_F64_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
+            case OPCODE_I64_TRUNC_SAT_F64_U: NOT_IMPLEMENTED();
+
+            default:
+                LOG("unknown opcode");
+                return;
+        }
+        code++;
+    }
+}
+
+static void wasmbox_module_dump(wasmbox_module_t *mod)
+{
+    fprintf(stdout, "module %p {\n", mod);
+    if (0) {
+        for (wasm_u32_t i = 0; i < mod->type_size; ++i) {
+            print_function_type(mod->types[i]);
+            fprintf(stdout, "\n");
+        }
+    }
+    if (mod->global_function) {
+        print_function(mod->global_function, 0);
+        fprintf(stdout, "\n");
+    }
+    for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
+        print_function(mod->functions[i], i);
+        fprintf(stdout, " {\n");
+        wasmbox_dump_function(mod->functions[i]->code, "  ");
+        fprintf(stdout, "}\n");
+    }
+    fprintf(stdout, "}\n");
+}
+
 int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
                         wasm_u16_t file_name_len) {
     wasmbox_input_stream_t stream = {};
@@ -1286,6 +1664,19 @@ static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
     return NULL;
 }
 
+static wasmbox_value_t *global_stack;
+static void dump_stack(wasmbox_value_t *stack) {
+    if (global_stack != NULL) {
+        fprintf(stdout, "-----------------\n");
+        int diff = stack - global_stack;
+        for (int i = 0; i < 20; ++i) {
+            fprintf(stdout, "stack[%d] = %d (u64:%llu, %p)\n", (i - diff), global_stack[i].s32, global_stack[i].u64,
+                    (void *)(intptr_t)global_stack[i].u64);
+        }
+        fprintf(stdout, "-----------------\n");
+    }
+}
+
 int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],
                         wasm_u16_t result_stack_size) {
     wasmbox_function_t *func = wasmbox_module_find_entrypoint(mod);
@@ -1293,24 +1684,13 @@ int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],
         LOG("_start function not found");
         return -1;
     }
-    int num_of_returns = func->type->return_size;
-    int num_of_arguments = func->type->argument_size;
-    // +-------------+-----------------+
-    // | stack - N   | return_val[N-1] |
-    // |    ...      |                 |
-    // | stack - 2   | return_val[1]   |
-    // | stack - 1   | return_val[0]   |
-    // | stack       | arguments[0]    |
-    // | stack + 1   | arguments[1]    |
-    // | stack + 2   | arguments[2]    |
-    // |    ...      |                 |
-    // | stack + N   | arguments[N]    |
-    // | stack + N+1 | local_val[0]    |
-    // |    ...      |                 |
-    // | stack + M+M | local_val[M-1]  |
-    // | stack + N+M | stack_top       |
-    // +-------------+-----------------+
-    wasmbox_value_t *stack_top = stack + func->locals;
+    global_stack = stack;
+    wasmbox_value_t *stack_top = stack + func->type->return_size;
+    wasmbox_code_t code[1] = {};
+    code[0].h.opcode = OPCODE_EXIT;
+    stack_top[0].u64 = (wasm_u64_t) (uintptr_t) stack_top;
+    stack_top[1].u64 = (wasm_u64_t) (uintptr_t) code;
+    dump_stack(stack_top);
     wasmbox_eval_function(mod, func->code, stack_top);
     return 0;
 }
