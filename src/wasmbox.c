@@ -1134,13 +1134,17 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 ARITHMETIC_OP(u32, *, "*");
                 break;
             case OPCODE_I32_DIV_S:
+                ARITHMETIC_OP(s32, /, "/");
+                break;
+            case OPCODE_I32_DIV_U:
                 ARITHMETIC_OP(u32, /, "/");
                 break;
-            case OPCODE_I32_DIV_U: NOT_IMPLEMENTED();
             case OPCODE_I32_REM_S:
+                ARITHMETIC_OP(s32, %, "%%");
+                break;
+            case OPCODE_I32_REM_U:
                 ARITHMETIC_OP(u32, %, "%%");
                 break;
-            case OPCODE_I32_REM_U: NOT_IMPLEMENTED();
             case OPCODE_I32_AND: NOT_IMPLEMENTED();
             case OPCODE_I32_OR: NOT_IMPLEMENTED();
             case OPCODE_I32_XOR: NOT_IMPLEMENTED();
