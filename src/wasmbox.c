@@ -1336,21 +1336,48 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_I32_TRUNC_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_F64_S: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_F64_U: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND_I32_U: NOT_IMPLEMENTED();
+#define CONVERT_OP(arg_type, ret_type, operand, arg_fmt) do { \
+    fprintf(stdout, "stack[%d]." # ret_type " = (" # ret_type ") stack[%d]." # arg_type "(" arg_fmt ") \n", \
+            code->op0.reg, code->op1.reg, stack[code->op1.reg].arg_type);                                   \
+    stack[code->op0.reg].ret_type = (operand) stack[code->op1.reg].arg_type;                                \
+    code++;                                                                                                 \
+} while (0)
+            case OPCODE_I64_EXTEND_I32_S:
+                CONVERT_OP(s32, s64, wasm_s64_t, "%d");
+                break;
+            case OPCODE_I64_EXTEND_I32_U:
+                CONVERT_OP(u32, u64, wasm_u64_t, "%d");
+                break;
             case OPCODE_I64_TRUNC_F32_S: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F64_S: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F64_U: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I32_U: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I64_S: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I64_U: NOT_IMPLEMENTED();
+
+            case OPCODE_F32_CONVERT_I32_S:
+                CONVERT_OP(s32, f32, wasm_f32_t, "%d");
+                break;
+            case OPCODE_F32_CONVERT_I32_U:
+                CONVERT_OP(u32, f32, wasm_f32_t, "%u");
+                break;
+            case OPCODE_F32_CONVERT_I64_S:
+                CONVERT_OP(s64, f32, wasm_f32_t, "%lld");
+                break;
+            case OPCODE_F32_CONVERT_I64_U:
+                CONVERT_OP(u64, f32, wasm_f32_t, "%llu");
+                break;
             case OPCODE_F32_DEMOTE_F64: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I32_U: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I64_S: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_S:
+                CONVERT_OP(s32, f64, wasm_f64_t, "%d");
+                break;
+            case OPCODE_F64_CONVERT_I32_U:
+                CONVERT_OP(u32, f64, wasm_f64_t, "%u");
+                break;
+            case OPCODE_F64_CONVERT_I64_S:
+                CONVERT_OP(s64, f64, wasm_f64_t, "%llu");
+                break;
+            case OPCODE_F64_CONVERT_I64_U:
+                CONVERT_OP(u64, f64, wasm_f32_t, "%llu");
+                break;
             case OPCODE_F64_PROMOTE_F32: NOT_IMPLEMENTED();
             case OPCODE_I32_REINTERPRET_F32:
                 fprintf(stdout, "stack[%d].u32 = reinterpret_cast(stack[%d].f32 (%f))\n",
@@ -1376,11 +1403,27 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 stack[code->op0.reg].f64 = stack[code->op1.reg].f64;
                 code++;
                 break;
-            case OPCODE_I32_EXTEND8_S: NOT_IMPLEMENTED();
-            case OPCODE_I32_EXTEND16_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND8_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND16_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND32_S: NOT_IMPLEMENTED();
+#define EXTEND_OP(arg_type, ret_type, operand) do {                                     \
+    fprintf(stdout, "stack[%d]." #ret_type " = extend8(stack[%d]." #arg_type " (%d))\n",\
+            code->op0.reg, code->op1.reg, stack[code->op1.reg].arg_type);               \
+    stack[code->op0.reg].ret_type = (operand) stack[code->op1.reg].arg_type;            \
+    code++;                                                                             \
+} while (0)
+            case OPCODE_I32_EXTEND8_S:
+                EXTEND_OP(s8, s32, wasm_s32_t);
+                break;
+            case OPCODE_I32_EXTEND16_S:
+                EXTEND_OP(s16, s32, wasm_s32_t);
+                break;
+            case OPCODE_I64_EXTEND8_S:
+                EXTEND_OP(s8, s64, wasm_s64_t);
+                break;
+            case OPCODE_I64_EXTEND16_S:
+                EXTEND_OP(s16, s64, wasm_s64_t);
+                break;
+            case OPCODE_I64_EXTEND32_S:
+                EXTEND_OP(s32, s64, wasm_s64_t);
+                break;
             case OPCODE_I32_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
@@ -1743,21 +1786,46 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I32_TRUNC_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_F64_S: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_F64_U: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND_I32_U: NOT_IMPLEMENTED();
+#define DUMP_CONVERT_OP(arg_type, ret_type) do { \
+    fprintf(stdout, "stack[%d]." # ret_type " = (" # ret_type ") stack[%d]." # arg_type "\n", \
+            code->op0.reg, code->op1.reg);                                   \
+} while (0)
+            case OPCODE_I64_EXTEND_I32_S:
+                DUMP_CONVERT_OP(s32, s64);
+                break;
+            case OPCODE_I64_EXTEND_I32_U:
+                DUMP_CONVERT_OP(u32, u64);
+                break;
             case OPCODE_I64_TRUNC_F32_S: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F64_S: NOT_IMPLEMENTED();
             case OPCODE_I64_TRUNC_F64_U: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I32_U: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I64_S: NOT_IMPLEMENTED();
-            case OPCODE_F32_CONVERT_I64_U: NOT_IMPLEMENTED();
+
+            case OPCODE_F32_CONVERT_I32_S:
+                DUMP_CONVERT_OP(s32, f32);
+                break;
+            case OPCODE_F32_CONVERT_I32_U:
+                DUMP_CONVERT_OP(u32, f32);
+                break;
+            case OPCODE_F32_CONVERT_I64_S:
+                DUMP_CONVERT_OP(s64, f32);
+                break;
+            case OPCODE_F32_CONVERT_I64_U:
+                DUMP_CONVERT_OP(u64, f32);
+                break;
             case OPCODE_F32_DEMOTE_F64: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I32_S: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I32_U: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I64_S: NOT_IMPLEMENTED();
-            case OPCODE_F64_CONVERT_I64_U: NOT_IMPLEMENTED();
+            case OPCODE_F64_CONVERT_I32_S:
+                DUMP_CONVERT_OP(s32, f64);
+                break;
+            case OPCODE_F64_CONVERT_I32_U:
+                DUMP_CONVERT_OP(u32, f64);
+                break;
+            case OPCODE_F64_CONVERT_I64_S:
+                DUMP_CONVERT_OP(s64, f64);
+                break;
+            case OPCODE_F64_CONVERT_I64_U:
+                DUMP_CONVERT_OP(u64, f64);
+                break;
             case OPCODE_F64_PROMOTE_F32: NOT_IMPLEMENTED();
             case OPCODE_I32_REINTERPRET_F32:
                 fprintf(stdout, "%sstack[%d].u32 = reinterpret_cast(stack[%d].f32)\n",
@@ -1775,11 +1843,21 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                 fprintf(stdout, "%sstack[%d].f64 = reinterpret_cast(stack[%d].u64)\n",
                         indent, code->op0.reg, code->op1.reg);
                 break;
-            case OPCODE_I32_EXTEND8_S: NOT_IMPLEMENTED();
-            case OPCODE_I32_EXTEND16_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND8_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND16_S: NOT_IMPLEMENTED();
-            case OPCODE_I64_EXTEND32_S: NOT_IMPLEMENTED();
+            case OPCODE_I32_EXTEND8_S:
+                DUMP_CONVERT_OP(s32, s8);
+                break;
+            case OPCODE_I32_EXTEND16_S:
+                DUMP_CONVERT_OP(s32, s16);
+                break;
+            case OPCODE_I64_EXTEND8_S:
+                DUMP_CONVERT_OP(s64, s8);
+                break;
+            case OPCODE_I64_EXTEND16_S:
+                DUMP_CONVERT_OP(s64, s16);
+                break;
+            case OPCODE_I64_EXTEND32_S:
+                DUMP_CONVERT_OP(s64, s32);
+                break;
             case OPCODE_I32_TRUNC_SAT_F32_S: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_SAT_F32_U: NOT_IMPLEMENTED();
             case OPCODE_I32_TRUNC_SAT_F64_S: NOT_IMPLEMENTED();
