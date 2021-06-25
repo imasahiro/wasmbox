@@ -948,9 +948,12 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
         fprintf(stdout, "op:%s (%p)\n", debug_opcodes[code->h.opcode], code);
         switch (code->h.opcode) {
             case OPCODE_UNREACHABLE:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "unreachable\n");
+                exit(-1);
+                break;
             case OPCODE_NOP:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "nop\n");
+                break;
             case OPCODE_DROP:
                 NOT_IMPLEMENTED();
             case OPCODE_SELECT:
