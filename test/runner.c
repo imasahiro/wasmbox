@@ -18,6 +18,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <float.h>
+
+static int compare_float(float x, float y) {
+    float diff = x > y ? (x - y) : (y - x);
+    return diff < FLT_EPSILON;
+}
+
+static int compare_double(double x, double y) {
+    double diff = x > y ? (x - y) : (y - x);
+    return diff < DBL_EPSILON;
+}
 
 static int check_result(int result_length, wasmbox_value_t stack[], wasmbox_value_t expected[],
                         wasmbox_value_type_t expected_types[]) {
@@ -34,12 +45,12 @@ static int check_result(int result_length, wasmbox_value_t stack[], wasmbox_valu
                         equal? "==" : "!=", stack[i].s64);
                 break;
             case WASM_TYPE_F32:
-                equal &= expected[i].f32 == stack[i].f32;
+                equal &= compare_float(expected[i].f32, stack[i].f32);
                 fprintf(stdout, "expected(%d):(%f) %s actual(%f)\n", i, expected[i].f32,
                         equal? "==" : "!=", stack[i].f32);
                 break;
             case WASM_TYPE_F64:
-                equal &= expected[i].f64 == stack[0].f64;
+                equal &= compare_double(expected[i].f64, stack[0].f64);
                 fprintf(stdout, "expected(%d):(%g) %s actual(%g)\n", i, expected[i].f64,
                         equal? "==" : "!=", stack[0].f64);
                 break;

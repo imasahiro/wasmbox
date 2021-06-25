@@ -1158,29 +1158,41 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 ARITHMETIC_OP2(u64, s32, >=, ">=", "%lld", "%d");
                 break;
             case OPCODE_F32_EQ:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, ==, "==", "%f", "%d");
+                break;
             case OPCODE_F32_NE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, !=, "!=", "%f", "%d");
+                break;
             case OPCODE_F32_LT:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, <, "<", "%f", "%d");
+                break;
             case OPCODE_F32_GT:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, >, ">", "%f", "%d");
+                break;
             case OPCODE_F32_LE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, <=, "<=", "%f", "%d");
+                break;
             case OPCODE_F32_GE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f32, s32, >=, ">=", "%f", "%d");
+                break;
             case OPCODE_F64_EQ:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, ==, "==", "%f", "%d");
+                break;
             case OPCODE_F64_NE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, !=, "!=", "%f", "%d");
+                break;
             case OPCODE_F64_LT:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, <, "<", "%f", "%d");
+                break;
             case OPCODE_F64_GT:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, >, ">", "%f", "%d");
+                break;
             case OPCODE_F64_LE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, <=, "<=", "%f", "%d");
+                break;
             case OPCODE_F64_GE:
-                NOT_IMPLEMENTED();
+                ARITHMETIC_OP2(f64, s32, >=, ">=", "%f", "%d");
+                break;
             case OPCODE_I32_CLZ:
                 NOT_IMPLEMENTED();
             case OPCODE_I32_CTZ:
@@ -1279,10 +1291,18 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_F32_TRUNC: NOT_IMPLEMENTED();
             case OPCODE_F32_NEAREST: NOT_IMPLEMENTED();
             case OPCODE_F32_SQRT: NOT_IMPLEMENTED();
-            case OPCODE_F32_ADD: NOT_IMPLEMENTED();
-            case OPCODE_F32_SUB: NOT_IMPLEMENTED();
-            case OPCODE_F32_MUL: NOT_IMPLEMENTED();
-            case OPCODE_F32_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F32_ADD:
+                ARITHMETIC_OP2(f32, f32, +, "+", "%f", "%f");
+                break;
+            case OPCODE_F32_SUB:
+                ARITHMETIC_OP2(f32, f32, -, "-", "%f", "%f");
+                break;
+            case OPCODE_F32_MUL:
+                ARITHMETIC_OP2(f32, f32, *, "*", "%f", "%f");
+                break;
+            case OPCODE_F32_DIV:
+                ARITHMETIC_OP2(f32, f32, /, "/", "%f", "%f");
+                break;
             case OPCODE_F32_MIN: NOT_IMPLEMENTED();
             case OPCODE_F32_MAX: NOT_IMPLEMENTED();
             case OPCODE_F32_COPYSIGN: NOT_IMPLEMENTED();
@@ -1293,10 +1313,18 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_F64_TRUNC: NOT_IMPLEMENTED();
             case OPCODE_F64_NEAREST: NOT_IMPLEMENTED();
             case OPCODE_F64_SQRT: NOT_IMPLEMENTED();
-            case OPCODE_F64_ADD: NOT_IMPLEMENTED();
-            case OPCODE_F64_SUB: NOT_IMPLEMENTED();
-            case OPCODE_F64_MUL: NOT_IMPLEMENTED();
-            case OPCODE_F64_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F64_ADD:
+                ARITHMETIC_OP2(f64, f64, +, "+", "%g", "%g");
+                break;
+            case OPCODE_F64_SUB:
+                ARITHMETIC_OP2(f64, f64, -, "-", "%g", "%g");
+                break;
+            case OPCODE_F64_MUL:
+                ARITHMETIC_OP2(f64, f64, *, "*", "%g", "%g");
+                break;
+            case OPCODE_F64_DIV:
+                ARITHMETIC_OP2(f64, f64, /, "/", "%g", "%g");
+                break;
             case OPCODE_F64_MIN: NOT_IMPLEMENTED();
             case OPCODE_F64_MAX: NOT_IMPLEMENTED();
             case OPCODE_F64_COPYSIGN: NOT_IMPLEMENTED();
@@ -1466,7 +1494,7 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_LOAD_CONST_F64:
                 DUMP_LOAD_CONST_OP(f64, "%g");
                 break;
-#define DUMP_ARITHMETIC_OP(type, operand, operand_str) \
+#define DUMP_ARITHMETIC_OP(type, operand_str) \
     fprintf(stdout, "%sstack[%d]." # type "= stack[%d]." # type " " operand_str " stack[%d]." #type "\n", \
             indent, code->op0.reg, code->op2.reg, code->op1.reg)
 
@@ -1474,92 +1502,104 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                 fprintf(stdout, "%sstack[%d].u32= stack[%d].u32 == 0\n", indent, code->op0.reg, code->op1.reg);
                 break;
             case OPCODE_I32_EQ:
-                DUMP_ARITHMETIC_OP(s32, ==, "==");
+                DUMP_ARITHMETIC_OP(s32, "==");
                 break;
             case OPCODE_I32_NE:
-                DUMP_ARITHMETIC_OP(s32, !=, "!=");
+                DUMP_ARITHMETIC_OP(s32, "!=");
                 break;
             case OPCODE_I32_LT_S:
-                DUMP_ARITHMETIC_OP(s32, <, "<");
+                DUMP_ARITHMETIC_OP(s32, "<");
                 break;
             case OPCODE_I32_LT_U:
-                DUMP_ARITHMETIC_OP(u32, <, "<");
+                DUMP_ARITHMETIC_OP(u32, "<");
                 break;
             case OPCODE_I32_GT_S:
-                DUMP_ARITHMETIC_OP(s32, >, ">");
+                DUMP_ARITHMETIC_OP(s32, ">");
                 break;
             case OPCODE_I32_GT_U:
-                DUMP_ARITHMETIC_OP(u32, >, ">");
+                DUMP_ARITHMETIC_OP(u32, ">");
                 break;
             case OPCODE_I32_LE_S:
-                DUMP_ARITHMETIC_OP(s32, <=, "<=");
+                DUMP_ARITHMETIC_OP(s32, "<=");
                 break;
             case OPCODE_I32_LE_U:
-                DUMP_ARITHMETIC_OP(u32, <=, "<=");
+                DUMP_ARITHMETIC_OP(u32, "<=");
                 break;
             case OPCODE_I32_GE_S:
-                DUMP_ARITHMETIC_OP(s32, >=, ">=");
+                DUMP_ARITHMETIC_OP(s32, ">=");
                 break;
             case OPCODE_I32_GE_U:
-                DUMP_ARITHMETIC_OP(u32, >=, ">=");
+                DUMP_ARITHMETIC_OP(u32, ">=");
                 break;
             case OPCODE_I64_EQZ:
                 fprintf(stdout, "%sstack[%d].u64= stack[%d].u64 == 0\n", indent, code->op0.reg, code->op1.reg);
                 break;
             case OPCODE_I64_EQ:
-                DUMP_ARITHMETIC_OP(s64, ==, "==");
+                DUMP_ARITHMETIC_OP(s64, "==");
                 break;
             case OPCODE_I64_NE:
-                DUMP_ARITHMETIC_OP(s64, !=, "!=");
+                DUMP_ARITHMETIC_OP(s64, "!=");
                 break;
             case OPCODE_I64_LT_S:
-                DUMP_ARITHMETIC_OP(s64, <, "<");
+                DUMP_ARITHMETIC_OP(s64, "<");
                 break;
             case OPCODE_I64_LT_U:
-                DUMP_ARITHMETIC_OP(u64, <, "<");
+                DUMP_ARITHMETIC_OP(u64, "<");
                 break;
             case OPCODE_I64_GT_S:
-                DUMP_ARITHMETIC_OP(s64, >, ">");
+                DUMP_ARITHMETIC_OP(s64, ">");
                 break;
             case OPCODE_I64_GT_U:
-                DUMP_ARITHMETIC_OP(u64, >, ">");
+                DUMP_ARITHMETIC_OP(u64, ">");
                 break;
             case OPCODE_I64_LE_S:
-                DUMP_ARITHMETIC_OP(s64, <=, "<=");
+                DUMP_ARITHMETIC_OP(s64, "<=");
                 break;
             case OPCODE_I64_LE_U:
-                DUMP_ARITHMETIC_OP(u64, <=, "<=");
+                DUMP_ARITHMETIC_OP(u64, "<=");
                 break;
             case OPCODE_I64_GE_S:
-                DUMP_ARITHMETIC_OP(s64, >=, ">=");
+                DUMP_ARITHMETIC_OP(s64, ">=");
                 break;
             case OPCODE_I64_GE_U:
-                DUMP_ARITHMETIC_OP(u64, >=, ">=");
+                DUMP_ARITHMETIC_OP(u64, ">=");
                 break;
             case OPCODE_F32_EQ:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, "==");
+                break;
             case OPCODE_F32_NE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, "!=");
+                break;
             case OPCODE_F32_LT:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, "<");
+                break;
             case OPCODE_F32_GT:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, ">");
+                break;
             case OPCODE_F32_LE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, "<=");
+                break;
             case OPCODE_F32_GE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f32, ">=");
+                break;
             case OPCODE_F64_EQ:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, "==");
+                break;
             case OPCODE_F64_NE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, "!=");
+                break;
             case OPCODE_F64_LT:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, "<");
+                break;
             case OPCODE_F64_GT:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, ">");
+                break;
             case OPCODE_F64_LE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, "<=");
+                break;
             case OPCODE_F64_GE:
-                NOT_IMPLEMENTED();
+                DUMP_ARITHMETIC_OP(f64, ">=");
+                break;
             case OPCODE_I32_CLZ:
                 NOT_IMPLEMENTED();
             case OPCODE_I32_CTZ:
@@ -1567,43 +1607,43 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I32_POPCNT:
                 NOT_IMPLEMENTED();
             case OPCODE_I32_ADD:
-                DUMP_ARITHMETIC_OP(u32, +, "+");
+                DUMP_ARITHMETIC_OP(u32, "+");
                 break;
             case OPCODE_I32_SUB:
-                DUMP_ARITHMETIC_OP(u32, -, "-");
+                DUMP_ARITHMETIC_OP(u32, "-");
                 break;
             case OPCODE_I32_MUL:
-                DUMP_ARITHMETIC_OP(u32, *, "*");
+                DUMP_ARITHMETIC_OP(u32, "*");
                 break;
             case OPCODE_I32_DIV_S:
-                DUMP_ARITHMETIC_OP(s32, /, "/");
+                DUMP_ARITHMETIC_OP(s32, "/");
                 break;
             case OPCODE_I32_DIV_U:
-                DUMP_ARITHMETIC_OP(u32, /, "/");
+                DUMP_ARITHMETIC_OP(u32, "/");
                 break;
             case OPCODE_I32_REM_S:
-                DUMP_ARITHMETIC_OP(s32, %, "%%");
+                DUMP_ARITHMETIC_OP(s32, "%%");
                 break;
             case OPCODE_I32_REM_U:
-                DUMP_ARITHMETIC_OP(u32, %, "%%");
+                DUMP_ARITHMETIC_OP(u32, "%%");
                 break;
             case OPCODE_I32_AND:
-                DUMP_ARITHMETIC_OP(u32, &, "&");
+                DUMP_ARITHMETIC_OP(u32, "&");
                 break;
             case OPCODE_I32_OR:
-                DUMP_ARITHMETIC_OP(u64, |, "|");
+                DUMP_ARITHMETIC_OP(u64, "|");
                 break;
             case OPCODE_I32_XOR:
-                DUMP_ARITHMETIC_OP(u32, ^, "^");
+                DUMP_ARITHMETIC_OP(u32, "^");
                 break;
             case OPCODE_I32_SHL:
-                DUMP_ARITHMETIC_OP(u32, <<, "<<");
+                DUMP_ARITHMETIC_OP(u32, "<<");
                 break;
             case OPCODE_I32_SHR_S:
-                DUMP_ARITHMETIC_OP(s32, >>, ">>");
+                DUMP_ARITHMETIC_OP(s32, ">>");
                 break;
             case OPCODE_I32_SHR_U:
-                DUMP_ARITHMETIC_OP(u32, >>, ">>");
+                DUMP_ARITHMETIC_OP(u32, ">>");
                 break;
             case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
             case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
@@ -1611,43 +1651,43 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I64_CTZ: NOT_IMPLEMENTED();
             case OPCODE_I64_POPCNT: NOT_IMPLEMENTED();
             case OPCODE_I64_ADD:
-                DUMP_ARITHMETIC_OP(u64, +, "+");
+                DUMP_ARITHMETIC_OP(u64, "+");
                 break;
             case OPCODE_I64_SUB:
-                DUMP_ARITHMETIC_OP(u64, -, "-");
+                DUMP_ARITHMETIC_OP(u64, "-");
                 break;
             case OPCODE_I64_MUL:
-                DUMP_ARITHMETIC_OP(u64, *, "*");
+                DUMP_ARITHMETIC_OP(u64, "*");
                 break;
             case OPCODE_I64_DIV_S:
-                DUMP_ARITHMETIC_OP(s64, -, "-");
+                DUMP_ARITHMETIC_OP(s64, "-");
                 break;
             case OPCODE_I64_DIV_U:
-                DUMP_ARITHMETIC_OP(u64, /, "/");
+                DUMP_ARITHMETIC_OP(u64, "/");
                 break;
             case OPCODE_I64_REM_S:
-                DUMP_ARITHMETIC_OP(s64, %, "%%");
+                DUMP_ARITHMETIC_OP(s64, "%%");
                 break;
             case OPCODE_I64_REM_U:
-                DUMP_ARITHMETIC_OP(u64, %, "%%");
+                DUMP_ARITHMETIC_OP(u64, "%%");
                 break;
             case OPCODE_I64_AND:
-                DUMP_ARITHMETIC_OP(u64, &, "&");
+                DUMP_ARITHMETIC_OP(u64, "&");
                 break;
             case OPCODE_I64_OR:
-                DUMP_ARITHMETIC_OP(u64, |, "|");
+                DUMP_ARITHMETIC_OP(u64, "|");
                 break;
             case OPCODE_I64_XOR:
-                DUMP_ARITHMETIC_OP(u64, ^, "^");
+                DUMP_ARITHMETIC_OP(u64, "^");
                 break;
             case OPCODE_I64_SHL:
-                DUMP_ARITHMETIC_OP(u64, <<, "<<");
+                DUMP_ARITHMETIC_OP(u64, "<<");
                 break;
             case OPCODE_I64_SHR_S:
-                DUMP_ARITHMETIC_OP(s64, >>, ">>");
+                DUMP_ARITHMETIC_OP(s64, ">>");
                 break;
             case OPCODE_I64_SHR_U:
-                DUMP_ARITHMETIC_OP(u64, >>, ">>");
+                DUMP_ARITHMETIC_OP(u64, ">>");
                 break;
             case OPCODE_I64_ROTL: NOT_IMPLEMENTED();
             case OPCODE_I64_ROTR: NOT_IMPLEMENTED();
@@ -1658,10 +1698,18 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_F32_TRUNC: NOT_IMPLEMENTED();
             case OPCODE_F32_NEAREST: NOT_IMPLEMENTED();
             case OPCODE_F32_SQRT: NOT_IMPLEMENTED();
-            case OPCODE_F32_ADD: NOT_IMPLEMENTED();
-            case OPCODE_F32_SUB: NOT_IMPLEMENTED();
-            case OPCODE_F32_MUL: NOT_IMPLEMENTED();
-            case OPCODE_F32_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F32_ADD:
+                DUMP_ARITHMETIC_OP(f32, "+");
+                break;
+            case OPCODE_F32_SUB:
+                DUMP_ARITHMETIC_OP(f32, "-");
+                break;
+            case OPCODE_F32_MUL:
+                DUMP_ARITHMETIC_OP(f32, "*");
+                break;
+            case OPCODE_F32_DIV:
+                DUMP_ARITHMETIC_OP(f32, "/");
+                break;
             case OPCODE_F32_MIN: NOT_IMPLEMENTED();
             case OPCODE_F32_MAX: NOT_IMPLEMENTED();
             case OPCODE_F32_COPYSIGN: NOT_IMPLEMENTED();
@@ -1672,10 +1720,18 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_F64_TRUNC: NOT_IMPLEMENTED();
             case OPCODE_F64_NEAREST: NOT_IMPLEMENTED();
             case OPCODE_F64_SQRT: NOT_IMPLEMENTED();
-            case OPCODE_F64_ADD: NOT_IMPLEMENTED();
-            case OPCODE_F64_SUB: NOT_IMPLEMENTED();
-            case OPCODE_F64_MUL: NOT_IMPLEMENTED();
-            case OPCODE_F64_DIV: NOT_IMPLEMENTED();
+            case OPCODE_F64_ADD:
+                DUMP_ARITHMETIC_OP(f64, "+");
+                break;
+            case OPCODE_F64_SUB:
+                DUMP_ARITHMETIC_OP(f64, "-");
+                break;
+            case OPCODE_F64_MUL:
+                DUMP_ARITHMETIC_OP(f64, "*");
+                break;
+            case OPCODE_F64_DIV:
+                DUMP_ARITHMETIC_OP(f64, "/");
+                break;
             case OPCODE_F64_MIN: NOT_IMPLEMENTED();
             case OPCODE_F64_MAX: NOT_IMPLEMENTED();
             case OPCODE_F64_COPYSIGN: NOT_IMPLEMENTED();
