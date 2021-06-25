@@ -60,7 +60,7 @@ int main(int argc, char const *argv[]) {
     FILE *fp = fopen(argv[2], "r");
     wasmbox_module_t mod = {};
     int stack_index = 0;
-    wasmbox_value_t stack[20] = {};
+    wasmbox_value_t stack[1024] = {};
     int expected_index = 0;
     wasmbox_value_t expected[10] = {};
     wasmbox_value_type_t expected_type[10] = {};

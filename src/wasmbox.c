@@ -408,12 +408,21 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *m
                                 wasmbox_function_t *func, wasm_u8_t op) {
     wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     switch (op) {
-#define FUNC(opcode, param, type, inst, vmopcode) case (opcode): { \
-    wasmbox_code_add_variable(func, vmopcode, idx);                \
-    return 0; \
-}
-        VARIABLE_INST_EACH(FUNC)
-#undef FUNC
+        case 0x20: // local.get
+            wasmbox_code_add_move(func, WASMBOX_FUNCTION_CALL_OFFSET + idx, func->stack_top++);
+            return 0;
+        case 0x21: // local.set
+            wasmbox_code_add_move(func, func->stack_top - 1, WASMBOX_FUNCTION_CALL_OFFSET + idx);
+            return 0;
+        case 0x22: // local.tee
+            wasmbox_code_add_variable(func, OPCODE_LOCAL_TEE, idx);
+            return 0;
+        case 0x23: // global.get
+            wasmbox_code_add_variable(func, OPCODE_GLOBAL_GET, idx);
+            return 0;
+        case 0x24: // global.set
+            wasmbox_code_add_variable(func, OPCODE_GLOBAL_SET, idx);
+            return 0;
         default:
             return -1;
     }
@@ -588,7 +597,6 @@ static int parse_local_variable(wasmbox_input_stream_t *ins, wasm_u64_t *index, 
 
 static int parse_local_variables(wasmbox_input_stream_t *ins, wasmbox_function_t *func) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    func->locals = len;
     for (wasm_u64_t i = 0; i < len; i++) {
         wasm_u64_t localidx;
         wasmbox_value_type_t type;
@@ -596,7 +604,9 @@ static int parse_local_variables(wasmbox_input_stream_t *ins, wasmbox_function_t
             return -1;
         }
         fprintf(stdout, "%llu: local%llu(type=%d)\n", i, localidx, type);
+        func->locals += localidx;
     }
+    func->stack_top += func->locals;
     return 0;
 }
 
@@ -987,8 +997,6 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
                 code++;
                 break;
-            case OPCODE_LOCAL_SET:
-                NOT_IMPLEMENTED();
             case OPCODE_LOCAL_TEE:
                 NOT_IMPLEMENTED();
             case OPCODE_GLOBAL_GET:
@@ -1311,8 +1319,6 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_LOCAL_GET:
                 fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
                 break;
-            case OPCODE_LOCAL_SET:
-                NOT_IMPLEMENTED();
             case OPCODE_LOCAL_TEE:
                 NOT_IMPLEMENTED();
             case OPCODE_GLOBAL_GET:
@@ -1666,10 +1672,10 @@ static wasmbox_function_t *wasmbox_module_find_entrypoint(wasmbox_module_t *mod)
 
 static wasmbox_value_t *global_stack;
 static void dump_stack(wasmbox_value_t *stack) {
-    if (global_stack != NULL) {
+    if (0 && global_stack != NULL) {
         fprintf(stdout, "-----------------\n");
         int diff = stack - global_stack;
-        for (int i = 0; i < 20; ++i) {
+        for (int i = 0; i < 60; ++i) {
             fprintf(stdout, "stack[%d] = %d (u64:%llu, %p)\n", (i - diff), global_stack[i].s32, global_stack[i].u64,
                     (void *)(intptr_t)global_stack[i].u64);
         }
