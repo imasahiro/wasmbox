@@ -154,12 +154,20 @@ struct wasmbox_code_t {
     union wasmbox_code_operands op2;
 };
 
+#define WASMBOX_PAGE_SIZE (65536)
+typedef struct wasmbox_memory_block_t {
+    wasm_u8_t data[0/* WASMBOX_PAGE_SIZE * page_size */];
+} wasmbox_memory_block_t;
+
 typedef struct wasmbox_module_t {
     wasmbox_function_t **functions;
     wasm_u32_t function_size;
     wasm_u32_t function_capacity;
     wasmbox_value_t *globals;
     wasm_u32_t global_size;
+    wasmbox_memory_block_t *memory_block;
+    wasm_u32_t memory_block_size;
+    wasm_u32_t memory_block_capacity;
     wasmbox_function_t *global_function;
     wasmbox_type_t **types;
     wasm_u32_t type_size;

@@ -35,8 +35,8 @@ static void wasmbox_module_register_new_type(wasmbox_module_t *mod, wasmbox_type
         mod->type_capacity = MODULE_TYPES_INIT_SIZE;
     }
     if (mod->type_size + 1 == mod->type_capacity) {
-        mod->types = (wasmbox_type_t **) realloc(mod->types, sizeof(mod->types) * mod->type_capacity * 2);
         mod->type_capacity *= 2;
+        mod->types = (wasmbox_type_t **) realloc(mod->types, sizeof(mod->types) * mod->type_capacity);
     }
     mod->types[mod->type_size++] = func_type;
 }
@@ -47,14 +47,31 @@ static void wasmbox_module_register_new_function(wasmbox_module_t *mod, wasmbox_
     if (mod->functions == NULL) {
         mod->functions = (wasmbox_function_t **) wasmbox_malloc(sizeof(mod->functions) * MODULE_FUNCTIONS_INIT_SIZE);
         mod->function_size = 0;
-        mod->type_capacity = MODULE_FUNCTIONS_INIT_SIZE;
+        mod->function_capacity = MODULE_FUNCTIONS_INIT_SIZE;
     }
     if (mod->function_size + 1 == mod->function_capacity) {
-        mod->functions = (wasmbox_function_t **) realloc(mod->types,
-                                                         sizeof(mod->types) * mod->function_capacity * 2);
         mod->function_capacity *= 2;
+        mod->functions = (wasmbox_function_t **) realloc(mod->functions,
+                                                         sizeof(mod->functions) * mod->function_capacity);
     }
     mod->functions[mod->function_size++] = func;
+}
+
+static int wasmbox_module_add_memory_page(wasmbox_module_t *mod, wasmbox_limit_t *memory_size)
+{
+    if (mod->memory_block != NULL) {
+        LOG("only one memory block allowed");
+        return -1;
+    }
+    if (memory_size->min > memory_size->max) {
+        LOG("not supported");
+        return -1;
+    }
+    wasm_u32_t block_size = WASMBOX_PAGE_SIZE * memory_size->min;
+    mod->memory_block = (wasmbox_memory_block_t *) wasmbox_malloc(sizeof(*mod->memory_block) + block_size);
+    mod->memory_block_size = memory_size->min;
+    mod->memory_block_capacity = memory_size->max;
+    return 0;
 }
 
 #define MODULE_CODE_INIT_SIZE 4
@@ -460,16 +477,20 @@ static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_modu
     if (wasmbox_input_stream_read_u8(ins) != 0x00) {
         return -1;
     }
+    wasmbox_code_t code;
     switch (op) {
-#define FUNC(opcode, param, type, inst, vmopcode) case (opcode): { \
-    fprintf(stdout, "" #type #inst "\n"); \
-    break; \
-}
-        MEMORY_OP_EACH(FUNC)
-#undef FUNC
+        case 0x3F: // memory.size
+            code.h.opcode = OPCODE_MEMORY_SIZE;
+            break;
+        case 0x40: // memory.grow
+            code.h.opcode = OPCODE_MEMORY_SIZE;
+            code.op1.reg = func->stack_top - 1;
+            break;
         default:
             return -1;
     }
+    code.op0.reg = func->stack_top++;
+    wasmbox_code_add(func, &code);
     return 0;
 }
 
@@ -739,10 +760,8 @@ static int parse_memory_section(wasmbox_input_stream_t *ins, wasm_u64_t section_
         if (parse_limit(ins, &limit) != 0) {
             return -1;
         }
-        if (limit.max == WASM_U32_MAX) {
-            fprintf(stdout, "\tmem(%d)\n", limit.min);
-        } else {
-            fprintf(stdout, "\tmem(%d, %d)\n", limit.min, limit.max);
+        if (wasmbox_module_add_memory_page(mod, &limit) < 0) {
+            return -1;
         }
     }
     return 0;
@@ -941,6 +960,21 @@ static int parse_module(wasmbox_input_stream_t *ins, wasmbox_module_t *module) {
 
 static void dump_stack(wasmbox_value_t *stack);
 
+static wasm_u32_t wasmbox_runtime_memory_size(wasmbox_module_t *mod) {
+    return mod->memory_block_size;
+}
+
+static wasm_u32_t wasmbox_runtime_memory_grow(wasmbox_module_t *mod, wasm_u32_t new_size) {
+    wasm_u32_t current_page_size = wasmbox_runtime_memory_size(mod);
+    if (new_size <= 0 || current_page_size + new_size > mod->memory_block_capacity) { // TODO Need to confirm WASM spec.
+        return current_page_size;
+    }
+    wasm_u32_t new_block_size = WASMBOX_PAGE_SIZE * new_size;
+    mod->memory_block = (wasmbox_memory_block_t *) wasmbox_malloc(sizeof(*mod->memory_block) + new_block_size);
+    mod->memory_block_size = new_size;
+    return current_page_size;
+}
+
 static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
     while (1) {
@@ -1059,9 +1093,15 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_I64_STORE32:
                 NOT_IMPLEMENTED();
             case OPCODE_MEMORY_SIZE:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32 = memory.size\n", code->op0.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_memory_size(mod);
+                code++;
+                break;
             case OPCODE_MEMORY_GROW:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32 = memory.grow(stack[%d].u32)\n", code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_memory_grow(mod, stack[code->op1.reg].u32);
+                code++;
+                break;
 #define LOAD_CONST_OP(type, formatter) do { \
     fprintf(stdout, "stack[%d]." # type "= " formatter "\n", code->op0.reg, code->op1.value.type); \
     stack[code->op0.reg].type = code->op1.value.type;                                              \
@@ -1523,9 +1563,11 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I64_STORE32:
                 NOT_IMPLEMENTED();
             case OPCODE_MEMORY_SIZE:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "%sstack[%d].u32 = memory.size\n", indent, code->op0.reg);
+                break;
             case OPCODE_MEMORY_GROW:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "%sstack[%d].u32 = memory.grow(stack[%d].u32)\n", indent, code->op0.reg, code->op1.reg);
+                break;
 #define DUMP_LOAD_CONST_OP(type, formatter) \
     fprintf(stdout, "%sstack[%d]." # type "= " formatter "\n", indent, code->op0.reg, code->op1.value.type)
             case OPCODE_LOAD_CONST_I32:
@@ -1884,6 +1926,10 @@ static void wasmbox_module_dump(wasmbox_module_t *mod)
             fprintf(stdout, "\n");
         }
     }
+    if (mod->memory_block_size > 0) {
+        fprintf(stdout, "  mem(%p, current=%u, max=%u)\n", mod->memory_block,
+                mod->memory_block_size, mod->memory_block_capacity);
+    }
     if (mod->global_function) {
         print_function(mod->global_function, 0);
         fprintf(stdout, "\n");
@@ -1927,6 +1973,7 @@ int wasmbox_module_dispose(wasmbox_module_t *mod) {
     }
     wasmbox_free(mod->functions);
     wasmbox_free(mod->global_function);
+    wasmbox_free(mod->memory_block);
     return 0;
 }
 
