@@ -53,29 +53,29 @@ typedef struct wasmbox_op_decorder_t {
 
 /* Memory Instructions */
 #define MEMORY_INST_EACH(OP_INST_PARAM1) \
-    OP_INST_PARAM1(0x28, m:memarg, i32, load,   OPCODE_I32_LOAD) \
-    OP_INST_PARAM1(0x29, m:memarg, i64, load,   OPCODE_I64_LOAD) \
-    OP_INST_PARAM1(0x2A, m:memarg, f32, load,   OPCODE_F32_LOAD) \
-    OP_INST_PARAM1(0x2B, m:memarg, f64, load,   OPCODE_F64_LOAD) \
-    OP_INST_PARAM1(0x2C, m:memarg, i32, load8_s,  OPCODE_I32_LOAD8_S) \
-    OP_INST_PARAM1(0x2D, m:memarg, i32, load8_u,  OPCODE_I32_LOAD8_U) \
-    OP_INST_PARAM1(0x2E, m:memarg, i32, load16_s, OPCODE_I32_LOAD16_S) \
-    OP_INST_PARAM1(0x2F, m:memarg, i32, load16_u, OPCODE_I32_LOAD16_U) \
-    OP_INST_PARAM1(0x30, m:memarg, i64, load8_s,  OPCODE_I64_LOAD8_S) \
-    OP_INST_PARAM1(0x31, m:memarg, i64, load8_u,  OPCODE_I64_LOAD8_U) \
-    OP_INST_PARAM1(0x32, m:memarg, i64, load16_s, OPCODE_I64_LOAD16_S) \
-    OP_INST_PARAM1(0x33, m:memarg, i64, load16_u, OPCODE_I64_LOAD16_U) \
-    OP_INST_PARAM1(0x34, m:memarg, i64, load32_s, OPCODE_I64_LOAD32_S) \
-    OP_INST_PARAM1(0x35, m:memarg, i64, load32_u, OPCODE_I64_LOAD32_U) \
-    OP_INST_PARAM1(0x36, m:memarg, i32, store,    OPCODE_I32_STORE) \
-    OP_INST_PARAM1(0x37, m:memarg, i64, store,    OPCODE_I64_STORE) \
-    OP_INST_PARAM1(0x38, m:memarg, f32, store,    OPCODE_F32_STORE) \
-    OP_INST_PARAM1(0x39, m:memarg, f64, store,    OPCODE_F64_STORE) \
-    OP_INST_PARAM1(0x3A, m:memarg, i32, store8,   OPCODE_I32_STORE8) \
-    OP_INST_PARAM1(0x3B, m:memarg, i32, store16,  OPCODE_I32_STORE16) \
-    OP_INST_PARAM1(0x3C, m:memarg, i64, store8,   OPCODE_I64_STORE8) \
-    OP_INST_PARAM1(0x3D, m:memarg, i64, store16,  OPCODE_I64_STORE16) \
-    OP_INST_PARAM1(0x3E, m:memarg, i64, store32,  OPCODE_I64_STORE32)
+    OP_INST_PARAM1(0x28, i32, s32, load,  OPCODE_I32_LOAD) \
+    OP_INST_PARAM1(0x29, i64, s32, load,  OPCODE_I64_LOAD) \
+    OP_INST_PARAM1(0x2A, f32, s32, load,  OPCODE_F32_LOAD) \
+    OP_INST_PARAM1(0x2B, f64, s32, load,  OPCODE_F64_LOAD) \
+    OP_INST_PARAM1(0x2C, i32, s8,  load,  OPCODE_I32_LOAD8_S) \
+    OP_INST_PARAM1(0x2D, i32, u8,  load,  OPCODE_I32_LOAD8_U) \
+    OP_INST_PARAM1(0x2E, i32, s16, load,  OPCODE_I32_LOAD16_S) \
+    OP_INST_PARAM1(0x2F, i32, u32, load,  OPCODE_I32_LOAD16_U) \
+    OP_INST_PARAM1(0x30, i64, s8,  load,  OPCODE_I64_LOAD8_S) \
+    OP_INST_PARAM1(0x31, i64, u8,  load,  OPCODE_I64_LOAD8_U) \
+    OP_INST_PARAM1(0x32, i64, s16, load,  OPCODE_I64_LOAD16_S) \
+    OP_INST_PARAM1(0x33, i64, u16, load,  OPCODE_I64_LOAD16_U) \
+    OP_INST_PARAM1(0x34, i64, s32, load,  OPCODE_I64_LOAD32_S) \
+    OP_INST_PARAM1(0x35, i64, u32, load,  OPCODE_I64_LOAD32_U) \
+    OP_INST_PARAM1(0x36, i32, s32, store, OPCODE_I32_STORE) \
+    OP_INST_PARAM1(0x37, i64, s32, store, OPCODE_I64_STORE) \
+    OP_INST_PARAM1(0x38, f32, s32, store, OPCODE_F32_STORE) \
+    OP_INST_PARAM1(0x39, f64, s32, store, OPCODE_F64_STORE) \
+    OP_INST_PARAM1(0x3A, i32, s8,  store, OPCODE_I32_STORE8) \
+    OP_INST_PARAM1(0x3B, i32, s16, store, OPCODE_I32_STORE16) \
+    OP_INST_PARAM1(0x3C, i64, s8,  store, OPCODE_I64_STORE8) \
+    OP_INST_PARAM1(0x3D, i64, s16, store, OPCODE_I64_STORE16) \
+    OP_INST_PARAM1(0x3E, i64, s32, store, OPCODE_I64_STORE32)
 
 #define MEMORY_OP_EACH(OP_INST_1) \
     OP_INST_1(0x3F, 0x00, any, memory_size, OPCODE_MEMORY_SIZE) \

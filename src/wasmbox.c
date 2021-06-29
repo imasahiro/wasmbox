@@ -24,6 +24,8 @@
 #include <string.h>
 
 #define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__)
+static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent);
+static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack);
 
 /* Module API */
 #define MODULE_TYPES_INIT_SIZE 4
@@ -124,6 +126,22 @@ static void wasmbox_code_add_move(wasmbox_function_t *func, wasm_s32_t from, was
     code.h.opcode = OPCODE_MOVE;
     code.op0.reg = to;
     code.op1.reg = from;
+    wasmbox_code_add(func, &code);
+}
+
+static void wasmbox_code_add_load(wasmbox_function_t *func, int vmopcode, wasm_u32_t offset) {
+    wasmbox_code_t code;
+    code.h.opcode = vmopcode;
+    code.op0.reg = func->stack_top++;
+    code.op1.index = offset;
+    wasmbox_code_add(func, &code);
+}
+
+static void wasmbox_code_add_store(wasmbox_function_t *func, int vmopcode, wasm_u32_t offset) {
+    wasmbox_code_t code;
+    code.h.opcode = vmopcode;
+    code.op0.index = offset;
+    code.op1.reg = func->stack_top - 1;
     wasmbox_code_add(func, &code);
 }
 
@@ -287,6 +305,21 @@ static int parse_blocktype(wasmbox_input_stream_t *ins, wasmbox_blocktype_t *typ
 
 static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func);
 
+static int parse_expression(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func)
+{
+    while (1) {
+        wasm_u8_t next = wasmbox_input_stream_peek_u8(ins);
+        if (next == 0x0B) {
+            wasmbox_input_stream_read_u8(ins);
+            break;
+        }
+        if (parse_instruction(ins, mod, func)) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 // INST(0x02 bt:blocktype (in:instr)* 0x0B, block bt in* end)
 // INST(0x03 bt:blocktype (in:instr)* 0x0B, loop bt in* end)
 static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
@@ -304,17 +337,7 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasm
         default:
             return -1;
     }
-    while (1) {
-        wasm_u8_t next = wasmbox_input_stream_peek_u8(ins);
-        if (next == 0x0B) {
-            wasmbox_input_stream_read_u8(ins);
-            break;
-        }
-        if (parse_instruction(ins, mod, func)) {
-            return -1;
-        }
-    }
-    return 0;
+    return parse_expression(ins, mod, func);
 }
 
 
@@ -446,7 +469,7 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *m
     return -1;
 }
 
-static int parse_memarg(wasmbox_input_stream_t *ins, wasm_u64_t *align, wasm_u64_t *offset) {
+static int parse_memarg(wasmbox_input_stream_t *ins, wasm_u32_t *align, wasm_u32_t *offset) {
     *align = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     *offset = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     return 0;
@@ -454,17 +477,18 @@ static int parse_memarg(wasmbox_input_stream_t *ins, wasm_u64_t *align, wasm_u64
 
 static int decode_memory_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                               wasmbox_function_t *func, wasm_u8_t op) {
-    wasm_u64_t align;
-    wasm_u64_t offset;
+    wasm_u32_t align;
+    wasm_u32_t offset;
     if (parse_memarg(ins, &align, &offset)) {
         return -1;
     }
     switch (op) {
-#define FUNC(opcode, param, type, inst, vmopcode) case (opcode): { \
-    fprintf(stdout, "" #type #inst "(align:%llu, offset:%llu)\n", align, offset); \
+#define FUNC(opcode, out_type, in_type, inst, vmopcode) case (opcode): {                       \
+    fprintf(stdout, "" #out_type #inst #in_type "(align:%u, offset:%u)\n", align, offset); \
+    wasmbox_code_add_##inst(func, vmopcode, offset);                                            \
     break; \
 }
-        MEMORY_INST_EACH(FUNC)
+            MEMORY_INST_EACH(FUNC)
 #undef FUNC
         default:
             return -1;
@@ -798,15 +822,8 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
     if (global->code != NULL && global->code[global->code_size - 1].h.opcode == OPCODE_EXIT) {
         global->code_size -= 1;
     }
-    while (1) {
-        wasm_u8_t next = wasmbox_input_stream_peek_u8(ins);
-        if (next == 0x0B) {
-            wasmbox_input_stream_read_u8(ins);
-            break;
-        }
-        if (parse_instruction(ins, mod, global)) {
-            return -1;
-        }
+    if (parse_expression(ins, mod, global) < 0) {
+        return -1;
     }
     wasmbox_code_t code;
     code.h.opcode = OPCODE_EXIT;
@@ -899,10 +916,51 @@ static int parse_code_section(wasmbox_input_stream_t *ins, wasm_u64_t section_si
     return 0;
 }
 
+static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
+    wasm_u8_t type = wasmbox_input_stream_read_u8(ins);
+    wasm_u32_t index = 0;
+    wasm_u32_t len = 0;
+    assert(mod->memory_block_size > 0);
+    wasmbox_function_t func = {};
+    wasmbox_code_t code;
+    code.h.opcode = OPCODE_EXIT;
+    wasmbox_value_t stack[8];
+    wasm_u32_t offset = 0;
+    switch (type) {
+        case 0x02: // active with memory index
+            index = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+            assert(index == 0);
+            /* fallthrough */
+        case 0x00: // active without memory index
+            if (parse_expression(ins, mod, &func) < 0) {
+                return -1;
+            }
+            wasmbox_code_add_move(&func, func.stack_top - 1, -1);
+            wasmbox_code_add(&func, &code);
+            wasmbox_eval_function(mod, func.code, stack + 1);
+            offset = stack[0].u32;
+            /* fallthrough */
+        case 0x01: // passive
+            len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+            memcpy(mod->memory_block->data + offset, ins->data + ins->index, len);
+            ins->index += len;
+            break;
+        default:
+            return -1;
+    }
+    if (func.code_size > 0) {
+        wasmbox_free(func.code);
+    }
+    return 0;
+}
+
 static int parse_data_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
-    fprintf(stdout, "data\n");
-    dump_binary(ins, section_size);
-    ins->index += section_size;
+    wasm_u32_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+    for (wasm_u32_t i = 0; i < len; i++) {
+        if (parse_data(ins, mod)) {
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -1046,52 +1104,88 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
                 mod->globals[code->op0.reg].u64 = stack[code->op1.reg].u64;
                 code++;
                 break;
+
+#define LOAD_OP(itype, otype, out_type) do { \
+    fprintf(stdout, "stack[%d]." # otype " = (" #out_type ") *(" #itype " *) &memory[%d]\n",     \
+            code->op0.reg, code->op1.index);                                                     \
+    stack[code->op0.reg].otype = (out_type) *(itype *)&mod->memory_block->data[code->op1.index]; \
+    code++;                                                                                      \
+} while (0)
             case OPCODE_I32_LOAD:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u32_t, u32, wasm_u32_t);
+                break;
             case OPCODE_I64_LOAD:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u64_t, u64, wasm_u64_t);
+                break;
             case OPCODE_F32_LOAD:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_f32_t, f32, wasm_f32_t);
+                break;
             case OPCODE_F64_LOAD:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_f64_t, f64, wasm_f64_t);
+                break;
             case OPCODE_I32_LOAD8_S:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_s8_t , s32, wasm_s32_t);
+                break;
             case OPCODE_I32_LOAD8_U:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u8_t, u32, wasm_u32_t);
+                break;
             case OPCODE_I32_LOAD16_S:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_s16_t , s32, wasm_s32_t);
+                break;
             case OPCODE_I32_LOAD16_U:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u16_t, u32, wasm_u32_t);
+                break;
             case OPCODE_I64_LOAD8_S:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_s8_t, s64, wasm_s64_t);
+                break;
             case OPCODE_I64_LOAD8_U:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u8_t, u64, wasm_u64_t);
+                break;
             case OPCODE_I64_LOAD16_S:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_s16_t, s64, wasm_s64_t);
+                break;
             case OPCODE_I64_LOAD16_U:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u16_t, u64, wasm_u64_t);
+                break;
             case OPCODE_I64_LOAD32_S:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_s32_t, s64, wasm_s64_t);
+                break;
             case OPCODE_I64_LOAD32_U:
-                NOT_IMPLEMENTED();
+                LOAD_OP(wasm_u32_t, u64, wasm_u64_t);
+                break;
+#define STORE_OP(itype, otype, out_type) do { \
+    fprintf(stdout, "*(" #otype " *) &memory[%d] = (" #otype ") = stack[%d]." # itype "\n",         \
+            code->op0.index, code->op1.reg);                                                        \
+    *(out_type *)&mod->memory_block->data[code->op0.index] = (out_type) stack[code->op1.reg].itype; \
+    code++;                                                                                         \
+} while (0)
             case OPCODE_I32_STORE:
-                NOT_IMPLEMENTED();
+                STORE_OP(u32, u32, wasm_u32_t);
+                break;
             case OPCODE_I64_STORE:
-                NOT_IMPLEMENTED();
+                STORE_OP(u64, u64, wasm_u64_t);
+                break;
             case OPCODE_F32_STORE:
-                NOT_IMPLEMENTED();
+                STORE_OP(f32, f32, wasm_f32_t);
+                break;
             case OPCODE_F64_STORE:
-                NOT_IMPLEMENTED();
+                STORE_OP(f64, f64, wasm_f64_t);
+                break;
             case OPCODE_I32_STORE8:
-                NOT_IMPLEMENTED();
+                STORE_OP(u8, u32, wasm_u32_t);
+                break;
             case OPCODE_I32_STORE16:
-                NOT_IMPLEMENTED();
+                STORE_OP(u16, u32, wasm_u32_t);
+                break;
             case OPCODE_I64_STORE8:
-                NOT_IMPLEMENTED();
+                STORE_OP(u8, u64, wasm_u64_t);
+                break;
             case OPCODE_I64_STORE16:
-                NOT_IMPLEMENTED();
+                STORE_OP(u16, u64, wasm_u64_t);
+                break;
             case OPCODE_I64_STORE32:
-                NOT_IMPLEMENTED();
+                STORE_OP(u32, u64, wasm_u64_t);
+                break;
             case OPCODE_MEMORY_SIZE:
                 fprintf(stdout, "stack[%d].u32 = memory.size\n", code->op0.reg);
                 stack[code->op0.reg].u32 = wasmbox_runtime_memory_size(mod);
@@ -1516,52 +1610,83 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_GLOBAL_SET:
                 fprintf(stdout, "%sglobal[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
                 break;
+#define DUMP_LOAD_OP(itype, otype) do { \
+    fprintf(stdout, "stack[%d]." # otype " = (" #otype ") *(" #itype " *) &memory[%d]\n", \
+            code->op0.reg, code->op1.index);                                              \
+} while (0)
             case OPCODE_I32_LOAD:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u32, u32);
+                break;
             case OPCODE_I64_LOAD:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u64, u64);
+                break;
             case OPCODE_F32_LOAD:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(f32, f32);
+                break;
             case OPCODE_F64_LOAD:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(f64, f64);
+                break;
             case OPCODE_I32_LOAD8_S:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(s8, s32);
+                break;
             case OPCODE_I32_LOAD8_U:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u8, u32);
+                break;
             case OPCODE_I32_LOAD16_S:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(s16, s32);
+                break;
             case OPCODE_I32_LOAD16_U:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u16, u32);
+                break;
             case OPCODE_I64_LOAD8_S:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(s8, s64);
+                break;
             case OPCODE_I64_LOAD8_U:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u8, u64);
+                break;
             case OPCODE_I64_LOAD16_S:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(s16, s64);
+                break;
             case OPCODE_I64_LOAD16_U:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u16, u64);
+                break;
             case OPCODE_I64_LOAD32_S:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(s32, s64);
+                break;
             case OPCODE_I64_LOAD32_U:
-                NOT_IMPLEMENTED();
+                DUMP_LOAD_OP(u32, u64);
+                break;
+#define DUMP_STORE_OP(itype, otype) do { \
+    fprintf(stdout, "*(" #otype " *) &memory[%d] = (" #otype ") = stack[%d]." # itype "\n", \
+            code->op0.index, code->op1.reg);                                                \
+} while (0)
             case OPCODE_I32_STORE:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u32, u32);
+                break;
             case OPCODE_I64_STORE:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u64, u64);
+                break;
             case OPCODE_F32_STORE:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(f32, f32);
+                break;
             case OPCODE_F64_STORE:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(f64, f64);
+                break;
             case OPCODE_I32_STORE8:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u32, u8);
+                break;
             case OPCODE_I32_STORE16:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u32, u16);
+                break;
             case OPCODE_I64_STORE8:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u64, u8);
+                break;
             case OPCODE_I64_STORE16:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u64, u16);
+                break;
             case OPCODE_I64_STORE32:
-                NOT_IMPLEMENTED();
+                DUMP_STORE_OP(u64, u32);
+                break;
             case OPCODE_MEMORY_SIZE:
                 fprintf(stdout, "%sstack[%d].u32 = memory.size\n", indent, code->op0.reg);
                 break;
