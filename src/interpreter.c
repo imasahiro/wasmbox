@@ -43,6 +43,21 @@ static wasm_u32_t wasmbox_runtime_memory_grow(wasmbox_module_t *mod, wasm_u32_t 
     return current_page_size;
 }
 
+static wasm_u32_t wasmbox_runtime_clz32(wasm_u32_t v) {
+    return __builtin_clz(v);
+}
+
+static wasm_u32_t wasmbox_runtime_ctz32(wasm_u32_t v) {
+    return __builtin_ctz(v);
+}
+
+static wasm_u64_t wasmbox_runtime_clz64(wasm_u64_t v) {
+    return __builtin_clzl(v);
+}
+
+static wasm_u64_t wasmbox_runtime_ctz64(wasm_u64_t v) {
+    return __builtin_ctzl(v);
+}
 
 void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
@@ -348,9 +363,15 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
                 ARITHMETIC_OP2(f64, s32, >=, ">=", "%f", "%d");
                 break;
             case OPCODE_I32_CLZ:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u64 = clz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_clz32(stack[code->op1.reg].u64);
+                code++;
+                break;
             case OPCODE_I32_CTZ:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32 = ctz(stack[%d].u32)\n",code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_ctz32(stack[code->op1.reg].u64);
+                code++;
+                break;
             case OPCODE_I32_POPCNT:
                 NOT_IMPLEMENTED();
             case OPCODE_I32_ADD:
@@ -394,8 +415,16 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
                 break;
             case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
             case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
-            case OPCODE_I64_CLZ: NOT_IMPLEMENTED();
-            case OPCODE_I64_CTZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_CLZ:
+                fprintf(stdout, "stack[%d].u64 = clz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u64 = wasmbox_runtime_clz64(stack[code->op1.reg].u64);
+                code++;
+                break;
+            case OPCODE_I64_CTZ:
+                fprintf(stdout, "stack[%d].u64 = ctz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
+                stack[code->op0.reg].u64 = wasmbox_runtime_ctz64(stack[code->op1.reg].u64);
+                code++;
+                break;
             case OPCODE_I64_POPCNT: NOT_IMPLEMENTED();
             case OPCODE_I64_ADD:
                 ARITHMETIC_OP2(s64, s64, +, "+", "%lld", "%lld");
@@ -833,9 +862,11 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                 DUMP_ARITHMETIC_OP(f64, ">=");
                 break;
             case OPCODE_I32_CLZ:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32 = clz(stack[%d].u32)\n",code->op0.reg, code->op1.reg);
+                break;
             case OPCODE_I32_CTZ:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u32 = ctz(stack[%d].u32)\n",code->op0.reg, code->op1.reg);
+                break;
             case OPCODE_I32_POPCNT:
                 NOT_IMPLEMENTED();
             case OPCODE_I32_ADD:
@@ -879,8 +910,12 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                 break;
             case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
             case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
-            case OPCODE_I64_CLZ: NOT_IMPLEMENTED();
-            case OPCODE_I64_CTZ: NOT_IMPLEMENTED();
+            case OPCODE_I64_CLZ:
+                fprintf(stdout, "stack[%d].u64 = clz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_I64_CTZ:
+                fprintf(stdout, "stack[%d].u64 = ctz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
+                break;
             case OPCODE_I64_POPCNT: NOT_IMPLEMENTED();
             case OPCODE_I64_ADD:
                 DUMP_ARITHMETIC_OP(u64, "+");
