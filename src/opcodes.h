@@ -144,8 +144,8 @@ typedef struct wasmbox_op_decorder_t {
     OP_INST_0(0x74, binary, i32, shl,    OPCODE_I32_SHL) \
     OP_INST_0(0x75, binary, i32, shr_s,  OPCODE_I32_SHR_S) \
     OP_INST_0(0x76, binary, i32, shr_u,  OPCODE_I32_SHR_U) \
-    OP_INST_0(0x77, unary,  i32, rotl,   OPCODE_I32_ROTL) \
-    OP_INST_0(0x78, unary,  i32, rotr,   OPCODE_I32_ROTR) \
+    OP_INST_0(0x77, binary, i32, rotl,   OPCODE_I32_ROTL) \
+    OP_INST_0(0x78, binary, i32, rotr,   OPCODE_I32_ROTR) \
     /* i64 basic operator instructions */ \
     OP_INST_0(0x79, unary,  i64, clz,    OPCODE_I64_CLZ) \
     OP_INST_0(0x7A, unary,  i64, ctz,    OPCODE_I64_CTZ) \
@@ -163,8 +163,8 @@ typedef struct wasmbox_op_decorder_t {
     OP_INST_0(0x86, binary, i64, shl,    OPCODE_I64_SHL) \
     OP_INST_0(0x87, binary, i64, shr_s,  OPCODE_I64_SHR_S) \
     OP_INST_0(0x88, binary, i64, shr_u,  OPCODE_I64_SHR_U) \
-    OP_INST_0(0x89, unary,  i64, rotl,   OPCODE_I64_ROTL) \
-    OP_INST_0(0x8A, unary,  i64, rotr,   OPCODE_I64_ROTR) \
+    OP_INST_0(0x89, binary, i64, rotl,   OPCODE_I64_ROTL) \
+    OP_INST_0(0x8A, binary, i64, rotr,   OPCODE_I64_ROTR) \
     /* f32 basic operator instructions */ \
     OP_INST_0(0x8B, unary,  f32, abs,      OPCODE_F32_ABS) \
     OP_INST_0(0x8C, unary,  f32, neg,      OPCODE_F32_NEG) \

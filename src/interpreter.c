@@ -59,6 +59,22 @@ static wasm_u64_t wasmbox_runtime_ctz64(wasm_u64_t v) {
     return __builtin_ctzl(v);
 }
 
+static wasm_u32_t wasmbox_runtime_rotl32(wasm_u32_t x, wasm_u32_t y) {
+    return __builtin_rotateleft32(x, y);
+}
+
+static wasm_u32_t wasmbox_runtime_rotr32(wasm_u32_t x, wasm_u32_t y) {
+    return __builtin_rotateright32(x, y);
+}
+
+static wasm_u64_t wasmbox_runtime_rotl64(wasm_u64_t x, wasm_u64_t y) {
+    return __builtin_rotateleft64(x, y);
+}
+
+static wasm_u64_t wasmbox_runtime_rotr64(wasm_u64_t x, wasm_u64_t y) {
+    return __builtin_rotateright64(x, y);
+}
+
 void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
 {
     while (1) {
@@ -413,8 +429,18 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
             case OPCODE_I32_SHR_U:
                 ARITHMETIC_OP(u32, >>, ">>");
                 break;
-            case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
-            case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTL:
+                fprintf(stdout, "stack[%d].u32 = rotl(stack[%d].u32, stack[%d].u32)\n",
+                        code->op0.reg, code->op1.reg, code->op2.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_rotl32(stack[code->op1.reg].u32, stack[code->op2.reg].u32);
+                code++;
+                break;
+            case OPCODE_I32_ROTR:
+                fprintf(stdout, "stack[%d].u32 = rotr(stack[%d].u32, stack[%d].u32)\n",
+                        code->op0.reg, code->op1.reg, code->op2.reg);
+                stack[code->op0.reg].u32 = wasmbox_runtime_rotr32(stack[code->op1.reg].u32, stack[code->op2.reg].u32);
+                code++;
+                break;
             case OPCODE_I64_CLZ:
                 fprintf(stdout, "stack[%d].u64 = clz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
                 stack[code->op0.reg].u64 = wasmbox_runtime_clz64(stack[code->op1.reg].u64);
@@ -465,8 +491,18 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
             case OPCODE_I64_SHR_U:
                 ARITHMETIC_OP2(u64, u64, >>, ">>", "%llu", "%llu");
                 break;
-            case OPCODE_I64_ROTL: NOT_IMPLEMENTED();
-            case OPCODE_I64_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTL:
+                fprintf(stdout, "stack[%d].u64 = rotl(stack[%d].u64, stack[%d].u64)\n",
+                        code->op0.reg, code->op1.reg, code->op2.reg);
+                stack[code->op0.reg].u64 = wasmbox_runtime_rotl64(stack[code->op1.reg].u64, stack[code->op2.reg].u64);
+                code++;
+                break;
+            case OPCODE_I64_ROTR:
+                fprintf(stdout, "stack[%d].u64 = rotr(stack[%d].u64, stack[%d].u64)\n",
+                        code->op0.reg, code->op1.reg, code->op2.reg);
+                stack[code->op0.reg].u64 = wasmbox_runtime_rotr64(stack[code->op1.reg].u64, stack[code->op2.reg].u64);
+                code++;
+                break;
             case OPCODE_F32_ABS: NOT_IMPLEMENTED();
             case OPCODE_F32_NEG: NOT_IMPLEMENTED();
             case OPCODE_F32_CEIL: NOT_IMPLEMENTED();
@@ -908,8 +944,14 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I32_SHR_U:
                 DUMP_ARITHMETIC_OP(u32, ">>");
                 break;
-            case OPCODE_I32_ROTL: NOT_IMPLEMENTED();
-            case OPCODE_I32_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I32_ROTL:
+                fprintf(stdout, "%sstack[%d].u32 = rotl(stack[%d].u32, stack[%d].u32)\n",
+                        indent, code->op0.reg, code->op1.reg, code->op2.reg);
+                break;
+            case OPCODE_I32_ROTR:
+                fprintf(stdout, "%sstack[%d].u32 = rotr(stack[%d].u32, stack[%d].u32)\n",
+                        indent, code->op0.reg, code->op1.reg, code->op2.reg);
+                break;
             case OPCODE_I64_CLZ:
                 fprintf(stdout, "stack[%d].u64 = clz(stack[%d].u64)\n",code->op0.reg, code->op1.reg);
                 break;
@@ -956,8 +998,14 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_I64_SHR_U:
                 DUMP_ARITHMETIC_OP(u64, ">>");
                 break;
-            case OPCODE_I64_ROTL: NOT_IMPLEMENTED();
-            case OPCODE_I64_ROTR: NOT_IMPLEMENTED();
+            case OPCODE_I64_ROTL:
+                fprintf(stdout, "%sstack[%d].u64 = rotl(stack[%d].u64, stack[%d].u64)\n",
+                        indent, code->op0.reg, code->op1.reg, code->op2.reg);
+                break;
+            case OPCODE_I64_ROTR:
+                fprintf(stdout, "%sstack[%d].u64 = rotr(stack[%d].u64, stack[%d].u64)\n",
+                        indent, code->op0.reg, code->op1.reg, code->op2.reg);
+                break;
             case OPCODE_F32_ABS: NOT_IMPLEMENTED();
             case OPCODE_F32_NEG: NOT_IMPLEMENTED();
             case OPCODE_F32_CEIL: NOT_IMPLEMENTED();
