@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 typedef int (*wasmbox_op_decode_func_t)(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
-                                        wasmbox_function_t *func, wasm_u8_t op);
+                                        wasmbox_mutable_function_t *func, wasm_u8_t op);
 
 typedef struct wasmbox_op_decorder_t {
     wasm_u8_t lower;
