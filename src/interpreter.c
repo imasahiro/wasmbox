@@ -59,11 +59,11 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
                 break;
             case OPCODE_SELECT:
                 fprintf(stdout, "stack[%d].u64 = stack[%d].u64 ? stack[%d].u64 : stack[%d].u64\n",
-                        code->op0.reg, code->op1.reg, code->op1.r.reg1, code->op2.r.reg2);
-                if (stack[code->op0.reg].u32) {
-                    stack[code->op1.reg].u64 = stack[code->op2.r.reg1].u64;
+                        code->op0.reg, code->op1.reg, code->op2.r.reg1, code->op2.r.reg2);
+                if (stack[code->op1.reg].u32) {
+                    stack[code->op0.reg].u64 = stack[code->op2.r.reg1].u64;
                 } else {
-                    stack[code->op1.reg].u64 = stack[code->op2.r.reg2].u64;
+                    stack[code->op0.reg].u64 = stack[code->op2.r.reg2].u64;
                 }
                 code++;
                 break;
@@ -94,7 +94,7 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
             case OPCODE_STATIC_CALL: {
                 fprintf(stdout, "stack[%d].u64= func%p()\n", code->op0.reg, code->op1.func);
                 wasmbox_function_t *func = code->op1.func;
-                wasmbox_value_t *stack_top = &stack[code->op0.reg] + func->type->return_size;
+                wasmbox_value_t *stack_top = &stack[code->op0.reg] + code->op2.index;
                 stack_top[0].u64 = (wasm_u64_t) (uintptr_t) stack;
                 stack_top[1].u64 = (wasm_u64_t) (uintptr_t) (code + 1);
                 fprintf(stdout, "call stack:%p->%p, code:%p->%p\n",stack, stack_top + WASMBOX_FUNCTION_CALL_OFFSET,
@@ -599,7 +599,7 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
             case OPCODE_NOP:
             case OPCODE_SELECT:
                 fprintf(stdout, "%sstack[%d].u64 = stack[%d].u64 ? stack[%d].u64 : stack[%d].u64\n",
-                        indent, code->op0.reg, code->op1.reg, code->op1.r.reg1, code->op2.r.reg2);
+                        indent, code->op0.reg, code->op1.reg, code->op2.r.reg1, code->op2.r.reg2);
                 break;
             case OPCODE_EXIT:
                 fprintf(stdout, "%s%p %s ", indent, code, debug_opcodes[code->h.opcode]);

@@ -96,7 +96,10 @@ typedef struct wasmbox_function_t {
 
 typedef struct wasmbox_mutable_function_t {
     wasmbox_function_t base;
-    wasm_u16_t stack_top;
+    wasm_s16_t stack_top;
+    wasm_s16_t stack_size;
+    wasm_u16_t stack_capacity;
+    wasm_s16_t *operand_stack;
 } wasmbox_mutable_function_t;
 
 union wasmbox_code_operands {

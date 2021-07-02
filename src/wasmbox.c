@@ -76,6 +76,46 @@ static int wasmbox_module_add_memory_page(wasmbox_module_t *mod, wasmbox_limit_t
     return 0;
 }
 
+#define STACK_INIT_SIZE 4
+
+static void wasmbox_function_stack_expand_if_needed(wasmbox_mutable_function_t *func)
+{
+    if (func->operand_stack == NULL) {
+        func->operand_stack = (wasm_s16_t *) wasmbox_malloc(sizeof(*func->operand_stack) * STACK_INIT_SIZE);
+        func->stack_size = 0;
+        func->stack_capacity = STACK_INIT_SIZE;
+    }
+    if (func->stack_size + 1 == func->stack_capacity) {
+        func->stack_capacity *= 2;
+        func->operand_stack = (wasm_s16_t *) realloc(
+                func->operand_stack, sizeof(*func->operand_stack) * func->stack_capacity);
+    }
+}
+
+static wasm_s16_t wasmbox_function_push_stack(wasmbox_mutable_function_t *func)
+{
+    wasmbox_function_stack_expand_if_needed(func);
+    wasm_s16_t reg = func->stack_top++;
+    func->operand_stack[func->stack_size++] = reg;
+    return reg;
+}
+
+static wasm_s16_t wasmbox_function_peek_stack(wasmbox_mutable_function_t *func)
+{
+    if (func->stack_size == 0) {
+        LOG("empty stack");
+        return -1000;
+    }
+    return func->operand_stack[func->stack_size - 1];
+}
+
+static wasm_s16_t wasmbox_function_pop_stack(wasmbox_mutable_function_t *func)
+{
+    wasm_s16_t reg = wasmbox_function_peek_stack(func);
+    --func->stack_size;
+    return reg;
+}
+
 #define MODULE_CODE_INIT_SIZE 4
 static void wasmbox_code_add(wasmbox_mutable_function_t *func, wasmbox_code_t *code) {
     if (func->base.code == NULL) {
@@ -93,7 +133,7 @@ static void wasmbox_code_add(wasmbox_mutable_function_t *func, wasmbox_code_t *c
 static void wasmbox_code_add_const(wasmbox_mutable_function_t *func, int vmopcode, wasmbox_value_t v) {
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
-    code.op0.reg = func->stack_top++;
+    code.op0.reg = wasmbox_function_push_stack(func);
     code.op1.value = v;
     wasmbox_code_add(func, &code);
 }
@@ -101,7 +141,7 @@ static void wasmbox_code_add_const(wasmbox_mutable_function_t *func, int vmopcod
 static void wasmbox_code_add_variable(wasmbox_mutable_function_t *func, int vmopcode, wasm_u32_t index) {
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
-    code.op0.reg = func->stack_top++;
+    code.op0.reg = wasmbox_function_push_stack(func);
     if (vmopcode == OPCODE_GLOBAL_GET || vmopcode == OPCODE_GLOBAL_SET) {
         code.op1.index = index;
     } else {
@@ -110,13 +150,21 @@ static void wasmbox_code_add_variable(wasmbox_mutable_function_t *func, int vmop
     wasmbox_code_add(func, &code);
 }
 
-static int wasmbox_code_add_binary_op(wasmbox_mutable_function_t *func, int vmopcode) {
-    wasm_s32_t current_stack_top = func->stack_top;
+static int wasmbox_code_add_unary_op(wasmbox_mutable_function_t *func, int vmopcode) {
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
-    code.op0.reg = func->stack_top++;
-    code.op1.reg = current_stack_top - 2;
-    code.op2.reg = current_stack_top - 1;
+    code.op1.reg = wasmbox_function_pop_stack(func);
+    code.op0.reg = wasmbox_function_push_stack(func);
+    wasmbox_code_add(func, &code);
+    return 0;
+}
+
+static int wasmbox_code_add_binary_op(wasmbox_mutable_function_t *func, int vmopcode) {
+    wasmbox_code_t code;
+    code.h.opcode = vmopcode;
+    code.op2.reg = wasmbox_function_pop_stack(func);
+    code.op1.reg = wasmbox_function_pop_stack(func);
+    code.op0.reg = wasmbox_function_push_stack(func);
     wasmbox_code_add(func, &code);
     return 0;
 }
@@ -132,7 +180,7 @@ static void wasmbox_code_add_move(wasmbox_mutable_function_t *func, wasm_s32_t f
 static void wasmbox_code_add_load(wasmbox_mutable_function_t *func, int vmopcode, wasm_u32_t offset) {
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
-    code.op0.reg = func->stack_top++;
+    code.op0.reg = wasmbox_function_push_stack(func);
     code.op1.index = offset;
     wasmbox_code_add(func, &code);
 }
@@ -141,9 +189,10 @@ static void wasmbox_code_add_store(wasmbox_mutable_function_t *func, int vmopcod
     wasmbox_code_t code;
     code.h.opcode = vmopcode;
     code.op0.index = offset;
-    code.op1.reg = func->stack_top - 1;
+    code.op1.reg = wasmbox_function_pop_stack(func);
     wasmbox_code_add(func, &code);
 }
+
 
 #define TYPE_EACH(FUNC) \
     FUNC(0x7f, WASM_TYPE_I32, I32) \
@@ -344,7 +393,7 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasm
 // INST(0x05, end)
 static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_module_t *mod, wasmbox_mutable_function_t *func, wasm_u8_t op) {
     wasmbox_code_t code;
-    wasmbox_code_add_move(func, func->stack_top - 1, -1);
+    wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
     code.h.opcode = OPCODE_RETURN;
     wasmbox_code_add(func, &code);
     return 0;
@@ -421,16 +470,19 @@ static int decode_call(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmb
         LOG("Failed to find function\n");
         return -1;
     }
-    wasm_u16_t argument_from = func->stack_top - call->type->argument_size;
-    wasm_u16_t argument_to = func->stack_top + call->type->return_size + WASMBOX_FUNCTION_CALL_OFFSET;
+    wasm_u16_t stack_top = func->stack_top;
+    wasm_u16_t argument_to = stack_top + call->type->return_size + WASMBOX_FUNCTION_CALL_OFFSET;
     for (int i = 0; i < call->type->argument_size; ++i) {
-        wasmbox_code_add_move(func, argument_from - i, argument_to + i);
+        wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), argument_to + i);
     }
     wasmbox_code_t code;
     code.h.opcode = OPCODE_STATIC_CALL;
-    code.op0.reg = func->stack_top;
-    func->stack_top += call->type->return_size;
+    code.op0.reg = stack_top;
+    for (int i = 0; i < call->type->return_size; ++i) {
+        wasmbox_function_push_stack(func);
+    }
     code.op1.func = mod->functions[funcidx];
+    code.op2.index = call->type->return_size;
     wasmbox_code_add(func, &code);
     return 0;
 }
@@ -449,10 +501,10 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *m
     wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     switch (op) {
         case 0x20: // local.get
-            wasmbox_code_add_move(func, WASMBOX_FUNCTION_CALL_OFFSET + idx, func->stack_top++);
+            wasmbox_code_add_move(func, WASMBOX_FUNCTION_CALL_OFFSET + idx, wasmbox_function_push_stack(func));
             return 0;
         case 0x21: // local.set
-            wasmbox_code_add_move(func, func->stack_top - 1, WASMBOX_FUNCTION_CALL_OFFSET + idx);
+            wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), WASMBOX_FUNCTION_CALL_OFFSET + idx);
             return 0;
         case 0x22: // local.tee
             wasmbox_code_add_variable(func, OPCODE_LOCAL_TEE, idx);
@@ -508,12 +560,12 @@ static int decode_memory_size_and_grow(wasmbox_input_stream_t *ins, wasmbox_modu
             break;
         case 0x40: // memory.grow
             code.h.opcode = OPCODE_MEMORY_SIZE;
-            code.op1.reg = func->stack_top - 1;
+            code.op1.reg = wasmbox_function_pop_stack(func);
             break;
         default:
             return -1;
     }
-    code.op0.reg = func->stack_top++;
+    code.op0.reg = wasmbox_function_push_stack(func);
     wasmbox_code_add(func, &code);
     return 0;
 }
@@ -572,14 +624,14 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, w
             break;
         case 0x1B: // select
             code.h.opcode = OPCODE_SELECT;
-            code.op1.reg = func->stack_top - 1;
-            code.op2.r.reg1 = func->stack_top - 2;
-            code.op2.r.reg2 = func->stack_top - 3;
-            code.op0.reg = func->stack_top++;
+            code.op1.reg = wasmbox_function_pop_stack(func);
+            code.op2.r.reg2 = wasmbox_function_pop_stack(func);
+            code.op2.r.reg1 = wasmbox_function_pop_stack(func);
+            code.op0.reg = wasmbox_function_push_stack(func);
             wasmbox_code_add(func, &code);
             return 0;
 
-#define FUNC(op, type, inst, vmopcode) case (op): return wasmbox_code_add_binary_op(func, vmopcode);
+#define FUNC(op, param, type, inst, vmopcode) case (op): return wasmbox_code_add_##param##_op(func, vmopcode);
         NUMERIC_INST_EACH(FUNC)
 #undef FUNC
         default:
@@ -936,7 +988,7 @@ static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
             if (parse_expression(ins, mod, &func) < 0) {
                 return -1;
             }
-            wasmbox_code_add_move(&func, func.stack_top - 1, -1);
+            wasmbox_code_add_move(&func, wasmbox_function_pop_stack(&func), -1);
             wasmbox_code_add(&func, &code);
             wasmbox_eval_function(mod, func.base.code, stack + 1);
             offset = stack[0].u32;
