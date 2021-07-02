@@ -613,12 +613,12 @@ static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *m
 static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_mutable_function_t *func, wasm_u8_t op) {
     wasmbox_code_t code;
     switch (op) {
-#define FUNC(opcode, type, inst, vmopcode) case (opcode): { \
-    fprintf(stdout, "" #type "." # inst "\n"); \
-    return 0; \
-}
-        DUMMY_INST_EACH(FUNC)
-#undef FUNC
+        case 0x00: // unreachable
+            code.h.opcode = OPCODE_UNREACHABLE;
+            wasmbox_code_add(func, &code);
+            return 0;
+        case 0x01: // nop
+            return 0;
         case 0x1A: // drop
             // Just pop single operand without emitting code.
             wasmbox_function_pop_stack(func);
@@ -842,7 +842,6 @@ static int parse_table_section(wasmbox_input_stream_t *ins, wasm_u64_t section_s
 
 static int parse_memory_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "memory (num:%llu)\n", len);
     for (wasm_u64_t i = 0; i < len; i++) {
         wasmbox_limit_t limit;
         if (parse_limit(ins, &limit) != 0) {
