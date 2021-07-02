@@ -620,8 +620,9 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, w
         DUMMY_INST_EACH(FUNC)
 #undef FUNC
         case 0x1A: // drop
-            /* no op */
-            break;
+            // Just pop single operand without emitting code.
+            wasmbox_function_pop_stack(func);
+            return 0;
         case 0x1B: // select
             code.h.opcode = OPCODE_SELECT;
             code.op1.reg = wasmbox_function_pop_stack(func);
