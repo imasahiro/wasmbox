@@ -100,6 +100,10 @@ union wasmbox_code_operands {
     wasmbox_value_t value;
     wasm_u32_t index;
     wasm_s32_t reg;
+    struct registers {
+        wasm_s32_t reg1;
+        wasm_s32_t reg2;
+    } r;
     wasmbox_function_t *func;
 };
 

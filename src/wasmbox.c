@@ -559,14 +559,25 @@ static int decode_constant_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *m
 }
 
 static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_function_t *func, wasm_u8_t op) {
+    wasmbox_code_t code;
     switch (op) {
 #define FUNC(opcode, type, inst, vmopcode) case (opcode): { \
     fprintf(stdout, "" #type "." # inst "\n"); \
     return 0; \
 }
         DUMMY_INST_EACH(FUNC)
-        PARAMETRIC_INST_EACH(FUNC)
 #undef FUNC
+        case 0x1A: // drop
+            /* no op */
+            break;
+        case 0x1B: // select
+            code.h.opcode = OPCODE_SELECT;
+            code.op1.reg = func->stack_top - 1;
+            code.op2.r.reg1 = func->stack_top - 2;
+            code.op2.r.reg2 = func->stack_top - 3;
+            code.op0.reg = func->stack_top++;
+            wasmbox_code_add(func, &code);
+            return 0;
 
 #define FUNC(op, type, inst, vmopcode) case (op): return wasmbox_code_add_binary_op(func, vmopcode);
         NUMERIC_INST_EACH(FUNC)
@@ -1046,10 +1057,16 @@ static void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, w
             case OPCODE_NOP:
                 fprintf(stdout, "nop\n");
                 break;
-            case OPCODE_DROP:
-                NOT_IMPLEMENTED();
             case OPCODE_SELECT:
-                NOT_IMPLEMENTED();
+                fprintf(stdout, "stack[%d].u64 = stack[%d].u64 ? stack[%d].u64 : stack[%d].u64\n",
+                        code->op0.reg, code->op1.reg, code->op1.r.reg1, code->op2.r.reg2);
+                if (stack[code->op0.reg].u32) {
+                    stack[code->op1.reg].u64 = stack[code->op2.r.reg1].u64;
+                } else {
+                    stack[code->op1.reg].u64 = stack[code->op2.r.reg2].u64;
+                }
+                code++;
+                break;
             case OPCODE_EXIT:
                 fprintf(stdout, "exit\n");
                 return;
@@ -1580,8 +1597,10 @@ static void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
         switch (code->h.opcode) {
             case OPCODE_UNREACHABLE:
             case OPCODE_NOP:
-            case OPCODE_DROP:
             case OPCODE_SELECT:
+                fprintf(stdout, "%sstack[%d].u64 = stack[%d].u64 ? stack[%d].u64 : stack[%d].u64\n",
+                        indent, code->op0.reg, code->op1.reg, code->op1.r.reg1, code->op2.r.reg2);
+                break;
             case OPCODE_EXIT:
                 fprintf(stdout, "%s%p %s ", indent, code, debug_opcodes[code->h.opcode]);
                 return;
