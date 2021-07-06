@@ -37,7 +37,7 @@ static void wasmbox_module_register_new_type(wasmbox_module_t *mod, wasmbox_type
     }
     if (mod->type_size + 1 == mod->type_capacity) {
         mod->type_capacity *= 2;
-        mod->types = (wasmbox_type_t **) realloc(mod->types, sizeof(mod->types) * mod->type_capacity);
+        mod->types = (wasmbox_type_t **) wasmbox_realloc(mod->types, sizeof(mod->types) * mod->type_capacity);
     }
     mod->types[mod->type_size++] = func_type;
 }
@@ -53,7 +53,7 @@ static void wasmbox_module_register_new_function(wasmbox_module_t *mod, wasmbox_
     }
     if (mod->function_size + 1 == mod->function_capacity) {
         mod->function_capacity *= 2;
-        mod->functions = (wasmbox_function_t **) realloc(
+        mod->functions = (wasmbox_function_t **) wasmbox_realloc(
                 mod->functions,sizeof(wasmbox_mutable_function_t) * mod->function_capacity);
     }
     mod->functions[mod->function_size++] = (wasmbox_function_t *) func;
@@ -87,8 +87,10 @@ static void wasmbox_function_stack_expand_if_needed(wasmbox_mutable_function_t *
     }
     if (func->stack_size + 1 == func->stack_capacity) {
         func->stack_capacity *= 2;
-        func->operand_stack = (wasm_s16_t *) realloc(
+        func->operand_stack = (wasm_s16_t *) wasmbox_realloc(
                 func->operand_stack, sizeof(*func->operand_stack) * func->stack_capacity);
+        bzero(func->operand_stack + func->stack_size + 1,
+              (func->stack_capacity - func->stack_size) * sizeof(wasm_s16_t));
     }
 }
 
@@ -116,18 +118,76 @@ static wasm_s16_t wasmbox_function_pop_stack(wasmbox_mutable_function_t *func)
     return reg;
 }
 
+static void wasmbox_block_link(wasmbox_mutable_function_t *func)
+{
+    wasm_u32_t code_size = 0;
+    for (wasm_s16_t i = 0; i < func->block_size; ++i) {
+        wasmbox_block_t *block = &func->blocks[i];
+        block->start = code_size;
+        code_size += block->code_size;
+        block->end = code_size;
+    }
+    if (func->base.code_size > 0) {
+        func->base.code_size += code_size;
+        func->base.code = (wasmbox_code_t *) wasmbox_realloc(func->base.code,
+                                                     sizeof(wasmbox_code_t) * func->base.code_size);
+    } else {
+        func->base.code_size = code_size;
+        func->base.code = (wasmbox_code_t *) wasmbox_malloc(sizeof(wasmbox_code_t) * code_size);
+    }
+    for (wasm_s16_t i = 0; i < func->block_size; ++i) {
+        wasmbox_block_t *block = &func->blocks[i];
+        for (int j = 0; j < block->code_size; ++j) {
+            wasmbox_code_t *code = &block->code[j];
+            enum wasm_jump_direction direction = (enum wasm_jump_direction) code->op2.index;
+            if (code->h.opcode == OPCODE_JUMP) {
+                wasmbox_block_t *target = &func->blocks[code->op0.index];
+                wasm_u32_t offset = direction == WASM_JUMP_DIRECTION_HEAD ? target->start : target->end;
+                code->op0.code = func->base.code + offset;
+            }
+            else if (code->h.opcode == OPCODE_JUMP_IF) {
+                wasmbox_block_t *target = &func->blocks[code->op0.index];
+                wasm_u32_t offset = direction == WASM_JUMP_DIRECTION_HEAD ? target->start : target->end;
+                code->op0.code = func->base.code + offset;
+            }
+        }
+        memcpy(func->base.code + block->start, block->code, sizeof(wasmbox_code_t) * block->code_size);
+    }
+}
+
+static int wasmbox_block_add(wasmbox_mutable_function_t *func) {
+    if (func->blocks == NULL) {
+        func->blocks = (wasmbox_block_t *) wasmbox_malloc(sizeof(wasmbox_block_t));
+        func->block_size = 0;
+        func->block_capacity = 1;
+    }
+    if (func->block_size + 1 > func->block_capacity) {
+        func->block_capacity *= 2;
+        func->blocks = (wasmbox_block_t *) wasmbox_realloc(func->blocks, sizeof(wasmbox_block_t) * func->block_capacity);
+    }
+    int block_index = func->block_size++;
+    wasmbox_block_t *block = &func->blocks[block_index];
+    bzero(block, sizeof(wasmbox_block_t));
+    return block_index;
+}
+
 #define MODULE_CODE_INIT_SIZE 4
 static void wasmbox_code_add(wasmbox_mutable_function_t *func, wasmbox_code_t *code) {
-    if (func->base.code == NULL) {
-        func->base.code = (wasmbox_code_t *) wasmbox_malloc(sizeof(*func->base.code) * MODULE_CODE_INIT_SIZE);
-        func->base.code_size = 0;
-        func->base.code_capacity = MODULE_CODE_INIT_SIZE;
+    if (func->current_block == NULL) {
+        int block_index = wasmbox_block_add(func);
+        func->current_block = &func->blocks[block_index];
     }
-    if (func->base.code_size + sizeof(wasmbox_code_t) >= func->base.code_capacity) {
-        func->base.code_capacity *= 2;
-        func->base.code = (wasmbox_code_t *) realloc(func->base.code, sizeof(*func->base.code) * func->base.code_capacity);
+    wasmbox_block_t *block = func->current_block;
+    if (block->code == NULL) {
+        block->code = (wasmbox_code_t *) wasmbox_malloc(sizeof(wasmbox_code_t) * MODULE_CODE_INIT_SIZE);
+        block->code_size = 0;
+        block->code_capacity = MODULE_CODE_INIT_SIZE;
     }
-    memcpy(&func->base.code[func->base.code_size++], code, sizeof(*code));
+    if (block->code_size + 1 > block->code_capacity) {
+        block->code_capacity *= 2;
+        block->code = (wasmbox_code_t *) wasmbox_realloc(block->code, sizeof(wasmbox_code_t) * block->code_capacity);
+    }
+    memcpy(&block->code[block->code_size++], code, sizeof(*code));
 }
 
 static void wasmbox_code_add_const(wasmbox_mutable_function_t *func, int vmopcode, wasmbox_value_t v) {
@@ -193,6 +253,17 @@ static void wasmbox_code_add_store(wasmbox_mutable_function_t *func, int vmopcod
     wasmbox_code_add(func, &code);
 }
 
+static void wasmbox_code_add_jump(wasmbox_mutable_function_t *func, int vmopcode, wasm_u32_t blockindex,
+                                  enum wasm_jump_direction direction) {
+    wasmbox_code_t code;
+    code.h.opcode = vmopcode;
+    code.op0.index = blockindex;
+    if (vmopcode == OPCODE_JUMP_IF) {
+        code.op1.reg = wasmbox_function_pop_stack(func);
+    }
+    code.op2.index = (wasm_u32_t) direction;
+    wasmbox_code_add(func, &code);
+}
 
 #define TYPE_EACH(FUNC) \
     FUNC(0x7f, WASM_TYPE_I32, I32) \
@@ -315,22 +386,6 @@ static wasmbox_type_t *parse_function_type(wasmbox_input_stream_t *ins) {
     return func_type;
 }
 
-/* Control Instructions */
-typedef enum wasm_block_type_t {
-    WASMBOX_BLOCK_TYPE_NONE = 0,
-    WASMBOX_BLOCK_TYPE_VAL = 1,
-    WASMBOX_BLOCK_TYPE_INDEX = 2,
-} wasm_block_type_t;
-
-typedef struct wasmbox_blocktype_t {
-    wasm_block_type_t type;
-    // `t` if type is WASMBOX_BLOCK_TYPE_VAL and `x` if type is WASMBOX_BLOCK_TYPE_INDEX.
-    union wasmbox_blocktype_value_t {
-        wasmbox_value_type_t t;
-        wasm_s64_t x;
-    } v;
-} wasmbox_blocktype_t;
-
 static int parse_blocktype(wasmbox_input_stream_t *ins, wasmbox_blocktype_t *type) {
     wasm_u8_t t = wasmbox_input_stream_peek_u8(ins);
     switch (t) {
@@ -369,6 +424,19 @@ static int parse_expression(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, 
     return 0;
 }
 
+static void print_block_type(const char *prefix, wasmbox_blocktype_t *type) {
+    switch (type->type) {
+        case WASMBOX_BLOCK_TYPE_NONE:
+            break;
+        case WASMBOX_BLOCK_TYPE_VAL:
+            fprintf(stdout, "%s (type: %s)\n", prefix, value_type_to_string(type->v.t));
+            break;
+        case WASMBOX_BLOCK_TYPE_INDEX:
+            fprintf(stdout, "%s (index: %lld)\n", prefix, type->v.x);
+            break;
+    }
+}
+
 // INST(0x02 bt:blocktype (in:instr)* 0x0B, block bt in* end)
 // INST(0x03 bt:blocktype (in:instr)* 0x0B, loop bt in* end)
 static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox_mutable_function_t *func, wasm_u8_t op) {
@@ -378,10 +446,10 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasm
     }
     switch (op) {
         case 0x02:
-            fprintf(stdout, "block %d %llu\n", blocktype.type, blocktype.v.x);
+            print_block_type("block", &blocktype);
             break;
         case 0x03:
-            fprintf(stdout, "loop %d %llu\n", blocktype.type, blocktype.v.x);
+            print_block_type("loop", &blocktype);
             break;
         default:
             return -1;
@@ -406,18 +474,36 @@ static int decode_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wasmbox
     if (parse_blocktype(ins, &blocktype)) {
         return -1;
     }
-    fprintf(stdout, "if %d %llu\n", blocktype.type, blocktype.v.x);
+    print_block_type("if", &blocktype);
+    wasmbox_code_t code;
+    int block_then = wasmbox_block_add(func);
+    int block_else = wasmbox_block_add(func);
+    int block_cont = wasmbox_block_add(func);
 
+    func->current_block = &func->blocks[block_then];
+    wasm_s16_t block_value = -1;
+    if (blocktype.type == WASMBOX_BLOCK_TYPE_VAL) {
+        block_value = wasmbox_function_push_stack(func);
+    }
     while (1) {
         wasm_u8_t next = wasmbox_input_stream_peek_u8(ins);
-        if (next == 0x0B) {
+        if (next == 0x05) { // else
             wasmbox_input_stream_read_u8(ins);
-            break;
-        }
-        if (next == 0x05) {
-            fprintf(stdout, "else\n");
-            wasmbox_input_stream_read_u8(ins);
+            if (blocktype.type == WASMBOX_BLOCK_TYPE_VAL) {
+                wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), block_value);
+            }
+            wasmbox_code_add_jump(func, OPCODE_JUMP, block_cont, WASM_JUMP_DIRECTION_HEAD);
+            func->current_block = &func->blocks[block_else];
             continue;
+        }
+        if (next == 0x0B) { // endif
+            wasmbox_input_stream_read_u8(ins);
+            if (blocktype.type == WASMBOX_BLOCK_TYPE_VAL) {
+                wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), block_value);
+            }
+            wasmbox_code_add_jump(func, OPCODE_JUMP, block_cont, WASM_JUMP_DIRECTION_HEAD);
+            func->current_block = &func->blocks[block_cont];
+            break;
         }
         if (parse_instruction(ins, mod, func)) {
             return -1;
@@ -729,7 +815,11 @@ static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wa
         return -1;
     }
     size -= ins->index - index;
-    return parse_code(ins, mod, func, size);
+    int parsed = parse_code(ins, mod, func, size);
+    if (parsed == 0) {
+        wasmbox_block_link(func);
+    }
+    return parsed;
 }
 
 static int parse_type_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
@@ -884,6 +974,7 @@ static int parse_global_variable(wasmbox_input_stream_t *ins, wasmbox_module_t *
     wasmbox_code_t code;
     code.h.opcode = OPCODE_EXIT;
     wasmbox_code_add(global, &code);
+    wasmbox_block_link(global);
     return 0;
 }
 
@@ -990,6 +1081,7 @@ static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
             }
             wasmbox_code_add_move(&func, wasmbox_function_pop_stack(&func), -1);
             wasmbox_code_add(&func, &code);
+            wasmbox_block_link(&func);
             wasmbox_eval_function(mod, func.base.code, stack + 1);
             offset = stack[0].u32;
             /* fallthrough */

@@ -23,6 +23,51 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+typedef enum wasm_block_type_t {
+    WASMBOX_BLOCK_TYPE_NONE = 0,
+    WASMBOX_BLOCK_TYPE_VAL = 1,
+    WASMBOX_BLOCK_TYPE_INDEX = 2,
+} wasm_block_type_t;
+
+typedef struct wasmbox_blocktype_t {
+    wasm_block_type_t type;
+    // `t` if type is WASMBOX_BLOCK_TYPE_VAL and `x` if type is WASMBOX_BLOCK_TYPE_INDEX.
+    union wasmbox_blocktype_value_t {
+        wasmbox_value_type_t t;
+        wasm_s64_t x;
+    } v;
+} wasmbox_blocktype_t;
+
+enum wasm_jump_direction {
+    WASM_JUMP_DIRECTION_HEAD,
+    WASM_JUMP_DIRECTION_TAIL
+};
+
+typedef struct wasmbox_block_t wasmbox_block_t;
+struct wasmbox_block_t {
+    wasmbox_blocktype_t type;
+    enum wasm_jump_direction direction;
+    wasmbox_code_t *code;
+    wasm_u16_t stack_top;
+    wasm_u16_t nest_level;
+    wasm_u16_t code_size;
+    wasm_u16_t code_capacity;
+    wasm_u32_t start;
+    wasm_u32_t end;
+    wasmbox_block_t *parent;
+};
+
+typedef struct wasmbox_mutable_function_t {
+    wasmbox_function_t base;
+    wasmbox_block_t *current_block;
+    wasmbox_block_t *blocks;
+    wasm_s16_t block_size;
+    wasm_s16_t block_capacity;
+    wasm_s16_t stack_top;
+    wasm_s16_t stack_size;
+    wasm_u16_t stack_capacity;
+    wasm_s16_t *operand_stack;
+} wasmbox_mutable_function_t;
 
 typedef int (*wasmbox_op_decode_func_t)(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                                         wasmbox_mutable_function_t *func, wasm_u8_t op);
@@ -259,6 +304,8 @@ enum wasmbox_opcode {
      * Leaves from currently executing function and resume callee code.
      */
     OPCODE_RETURN,
+    OPCODE_JUMP,
+    OPCODE_JUMP_IF,
     OPCODE_MOVE,
     OPCODE_DYNAMIC_CALL,
     OPCODE_STATIC_CALL
@@ -281,6 +328,8 @@ static const char *debug_opcodes[] = {
 #undef FUNC5
     "OPCODE_EXIT",
     "OPCODE_RETURN",
+    "OPCODE_JUMP",
+    "OPCODE_JUMP_IF",
     "OPCODE_MOVE",
     "OPCODE_DYNAMIC_CALL",
     "OPCODE_STATIC_CALL"

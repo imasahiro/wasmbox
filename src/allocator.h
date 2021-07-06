@@ -27,6 +27,10 @@ static inline void *wasmbox_malloc(wasm_u32_t size) {
     return mem;
 }
 
+static inline void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
+    return realloc(ptr, size);
+}
+
 static inline void wasmbox_free(void *ptr) {
     free(ptr);
 }

@@ -91,16 +91,7 @@ typedef struct wasmbox_function_t {
     wasmbox_name_t *name;
     wasm_u16_t locals;
     wasm_u16_t code_size;
-    wasm_u16_t code_capacity;
 } wasmbox_function_t;
-
-typedef struct wasmbox_mutable_function_t {
-    wasmbox_function_t base;
-    wasm_s16_t stack_top;
-    wasm_s16_t stack_size;
-    wasm_u16_t stack_capacity;
-    wasm_s16_t *operand_stack;
-} wasmbox_mutable_function_t;
 
 union wasmbox_code_operands {
     wasmbox_value_t value;
@@ -111,6 +102,7 @@ union wasmbox_code_operands {
         wasm_s32_t reg2;
     } r;
     wasmbox_function_t *func;
+    wasmbox_code_t *code;
 };
 
 /**

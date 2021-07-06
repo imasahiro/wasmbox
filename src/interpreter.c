@@ -114,6 +114,18 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
                 stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
                 code++;
                 break;
+            case OPCODE_JUMP:
+                fprintf(stdout, "jump to %p\n", code->op0.code);
+                code = code->op0.code;
+                break;
+            case OPCODE_JUMP_IF:
+                fprintf(stdout, "jump to %p if stack[%d].u32\n", code->op0.code, code->op1.reg);
+                if (stack[code->op1.reg].u32) {
+                    code = code->op0.code;
+                } else {
+                    code++;
+                }
+                break;
             case OPCODE_DYNAMIC_CALL: {
                 fprintf(stdout, "stack[%d].u64= func%u()\n", code->op0.reg, code->op1.index);
                 wasmbox_function_t *func = mod->functions[code->op1.index];
@@ -658,7 +670,9 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
 
 void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
 {
+    wasmbox_code_t *head = code;
     while (1) {
+        fprintf(stdout, "[%03ld:%p] ", code - head, code);
         switch (code->h.opcode) {
             case OPCODE_UNREACHABLE:
             case OPCODE_NOP:
@@ -674,6 +688,12 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                 return;
             case OPCODE_MOVE:
                 fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
+                break;
+            case OPCODE_JUMP:
+                fprintf(stdout, "%sjump to %p\n", indent, code->op0.code);
+                break;
+            case OPCODE_JUMP_IF:
+                fprintf(stdout, "%sjump to %p if stack[%d].u32\n", indent, code->op0.code, code->op1.reg);
                 break;
             case OPCODE_DYNAMIC_CALL:
                 fprintf(stdout, "%sstack[%d].u64= func%u()\n", indent, code->op0.reg, code->op1.index);
