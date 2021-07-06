@@ -45,24 +45,25 @@ enum wasm_jump_direction {
 
 typedef struct wasmbox_block_t wasmbox_block_t;
 struct wasmbox_block_t {
+    wasm_u16_t id;
     wasmbox_blocktype_t type;
     enum wasm_jump_direction direction;
     wasmbox_code_t *code;
     wasm_u16_t stack_top;
-    wasm_u16_t nest_level;
     wasm_u16_t code_size;
     wasm_u16_t code_capacity;
     wasm_u32_t start;
     wasm_u32_t end;
-    wasmbox_block_t *parent;
+    wasm_u16_t parent_id;
+    wasm_u16_t next_id;
 };
 
 typedef struct wasmbox_mutable_function_t {
     wasmbox_function_t base;
     wasmbox_block_t *current_block;
     wasmbox_block_t *blocks;
-    wasm_s16_t block_size;
-    wasm_s16_t block_capacity;
+    wasm_u16_t block_size;
+    wasm_u16_t block_capacity;
     wasm_s16_t stack_top;
     wasm_s16_t stack_size;
     wasm_u16_t stack_capacity;

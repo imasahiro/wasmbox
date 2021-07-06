@@ -25,7 +25,7 @@
 extern "C" {
 #endif
 
-void wasmbox_dump_function(wasmbox_code_t *code, const char *indent);
+void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end, const char *indent);
 void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack);
 
 #ifdef __cplusplus

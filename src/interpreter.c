@@ -668,11 +668,11 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_
     }
 }
 
-void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
+void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end, const char *indent)
 {
-    wasmbox_code_t *head = code;
-    while (1) {
-        fprintf(stdout, "[%03ld:%p] ", code - head, code);
+    wasmbox_code_t *code = code_start;
+    while (code < code_end) {
+        fprintf(stdout, "[%03ld:%p] ", code - code_start, code);
         switch (code->h.opcode) {
             case OPCODE_UNREACHABLE:
             case OPCODE_NOP:
@@ -681,11 +681,11 @@ void wasmbox_dump_function(wasmbox_code_t *code, const char *indent)
                         indent, code->op0.reg, code->op1.reg, code->op2.r.reg1, code->op2.r.reg2);
                 break;
             case OPCODE_EXIT:
-                fprintf(stdout, "%s%p %s ", indent, code, debug_opcodes[code->h.opcode]);
-                return;
+                fprintf(stdout, "%sexit\n", indent);
+                break;
             case OPCODE_RETURN:
                 fprintf(stdout, "%sreturn;\n", indent);
-                return;
+                break;
             case OPCODE_MOVE:
                 fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent, code->op0.reg, code->op1.reg);
                 break;
