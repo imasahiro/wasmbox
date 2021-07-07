@@ -64,19 +64,35 @@ static wasm_u64_t wasmbox_runtime_ctz64(wasm_u64_t v) {
 }
 
 static wasm_u32_t wasmbox_runtime_rotl32(wasm_u32_t x, wasm_u32_t y) {
+#ifdef __llvm__
     return __builtin_rotateleft32(x, y);
+#else
+    return (x << y) | (x >> (sizeof(x) * 8 - y));
+#endif
 }
 
 static wasm_u32_t wasmbox_runtime_rotr32(wasm_u32_t x, wasm_u32_t y) {
+#ifdef __llvm__
     return __builtin_rotateright32(x, y);
+#else
+    return (x >> y) | (x << (sizeof(x) * 8 - y));
+#endif
 }
 
 static wasm_u64_t wasmbox_runtime_rotl64(wasm_u64_t x, wasm_u64_t y) {
+#ifdef __llvm__
     return __builtin_rotateleft64(x, y);
+#else
+    return (x << y) | (x >> (sizeof(x) * 8 - y));
+#endif
 }
 
 static wasm_u64_t wasmbox_runtime_rotr64(wasm_u64_t x, wasm_u64_t y) {
+#ifdef __llvm__
     return __builtin_rotateright64(x, y);
+#else
+    return (x >> y) | (x << (sizeof(x) * 8 - y));
+#endif
 }
 
 void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack)
