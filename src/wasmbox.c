@@ -389,7 +389,8 @@ static int parse_type_vector(wasmbox_input_stream_t *ins, wasm_u32_t len, wasmbo
 
 static wasmbox_type_t *parse_function_type(wasmbox_input_stream_t *ins) {
     wasmbox_value_type_t types[16];
-    assert(wasmbox_input_stream_read_u8(ins) == 0x60);
+    wasm_u8_t ch = wasmbox_input_stream_read_u8(ins);
+    assert(ch == 0x60);
     wasm_u32_t args_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     assert(args_size < 16);
     if (parse_type_vector(ins, args_size, types) != 0) {
@@ -872,6 +873,10 @@ static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wa
     wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->functions[funcindex];
     wasm_u64_t size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     wasm_u64_t index = ins->index;
+#if 0
+    fprintf(stdout, "code(size:%llu)\n", size);
+    dump_binary(ins, size);
+#endif
     if (parse_local_variables(ins, func)) {
         return -1;
     }
@@ -1194,6 +1199,9 @@ static int parse_section(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
     wasm_u8_t section_type = wasmbox_input_stream_read_u8(ins);
     assert(0 <= section_type && section_type <= 11);
     wasm_u64_t section_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
+#if 0
+    fprintf(stdout, "type=%d(%s), section_size=%llu\n", section_type, section_parser[section_type].name, section_size);
+#endif
     return section_parser[section_type].func(ins, section_size, mod);
 }
 

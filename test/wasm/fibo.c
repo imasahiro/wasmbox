@@ -5,6 +5,6 @@ int fibo(int n) {
   return fibo(n-1)+fibo(n-2);
 }
 
-int _start(int n) {
-    return fibo(n);
+int _start() {
+    return fibo(40);
 }
