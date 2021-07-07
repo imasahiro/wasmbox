@@ -14,33 +14,34 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-#include <string.h>
 #include "wasmbox/wasmbox.h"
 
-#ifndef WASMBOX_ALLOCATOR_H
-#define WASMBOX_ALLOCATOR_H
+#include <stdlib.h>
+#include <string.h>
 
-#ifdef __cplusplus
+#ifndef WASMBOX_ALLOCATOR_H
+#  define WASMBOX_ALLOCATOR_H
+
+#  ifdef __cplusplus
 extern "C" {
-#endif
+#  endif
 
 static inline void *wasmbox_malloc(wasm_u32_t size) {
-    void *mem = malloc(size);
-    bzero(mem, size);
-    return mem;
+  void *mem = malloc(size);
+  bzero(mem, size);
+  return mem;
 }
 
 static inline void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
-    return realloc(ptr, size);
+  return realloc(ptr, size);
 }
 
 static inline void wasmbox_free(void *ptr) {
-    free(ptr);
+  free(ptr);
 }
 
-#ifdef __cplusplus
+#  ifdef __cplusplus
 }
-#endif
+#  endif
 
-#endif //WASMBOX_ALLOCATOR_H
+#endif // WASMBOX_ALLOCATOR_H
