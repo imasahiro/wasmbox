@@ -15,12 +15,12 @@
  */
 
 #include "allocator.h"
+
 #include <assert.h>
 
-int main()
-{
-    void *ptr = wasmbox_malloc(128);
-    assert(ptr != NULL);
-    wasmbox_free(ptr);
-    return 0;
+int main() {
+  void *ptr = wasmbox_malloc(128);
+  assert(ptr != NULL);
+  wasmbox_free(ptr);
+  return 0;
 }

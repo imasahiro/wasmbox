@@ -17,23 +17,25 @@
 #include "wasmbox/wasmbox.h"
 
 #ifndef WASMBOX_LEB128_H
-#define WASMBOX_LEB128_H
+#  define WASMBOX_LEB128_H
 
-#ifdef __cplusplus
+#  ifdef __cplusplus
 extern "C" {
-#endif
+#  endif
 
 /**
  * Parses a unsigned LEB128 to {@link wasm_u64_t}.
  */
-wasm_u64_t wasmbox_parse_unsigned_leb128(const wasm_u8_t *p, wasm_u32_t *idx, wasm_u32_t len);
+wasm_u64_t wasmbox_parse_unsigned_leb128(const wasm_u8_t *p, wasm_u32_t *idx,
+                                         wasm_u32_t len);
 
 /**
  * Parses a signed LEB128 to {@link wasm_s64_t}.
  */
-wasm_s64_t wasmbox_parse_signed_leb128(const wasm_u8_t *p, wasm_u32_t *idx, wasm_u32_t len);
+wasm_s64_t wasmbox_parse_signed_leb128(const wasm_u8_t *p, wasm_u32_t *idx,
+                                       wasm_u32_t len);
 
-#ifdef __cplusplus
+#  ifdef __cplusplus
 }
-#endif
+#  endif
 #endif /* end of include guard */

@@ -20,19 +20,20 @@
 #include <stdio.h>
 
 #ifndef WASMBOX_INPUT_STREAM_H
-#define WASMBOX_INPUT_STREAM_H
+#  define WASMBOX_INPUT_STREAM_H
 
-#ifdef __cplusplus
+#  ifdef __cplusplus
 extern "C" {
-#endif
+#  endif
 
 typedef struct wasmbox_input_stream_t {
-    wasm_u32_t index;
-    wasm_u32_t length;
-    wasm_u8_t *data;
+  wasm_u32_t index;
+  wasm_u32_t length;
+  wasm_u8_t *data;
 } wasmbox_input_stream_t;
 
-wasmbox_input_stream_t *wasmbox_input_stream_open(wasmbox_input_stream_t *ins, const char *file_name);
+wasmbox_input_stream_t *wasmbox_input_stream_open(wasmbox_input_stream_t *ins,
+                                                  const char *file_name);
 
 int wasmbox_input_stream_is_end_of_stream(wasmbox_input_stream_t *ins);
 
@@ -44,7 +45,7 @@ wasm_u32_t wasmbox_input_stream_read_u32(wasmbox_input_stream_t *ins);
 
 void wasmbox_input_stream_close(wasmbox_input_stream_t *ins);
 
-#ifdef __cplusplus
+#  ifdef __cplusplus
 }
-#endif
+#  endif
 #endif /* end of include guard */

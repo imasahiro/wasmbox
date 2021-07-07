@@ -1,3 +1,3 @@
 unsigned _start(unsigned v) {
-    return v == 0;
+  return v == 0;
 }

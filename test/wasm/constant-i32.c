@@ -1,3 +1,3 @@
 int _start() {
-    return 42;
+  return 42;
 }

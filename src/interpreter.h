@@ -17,16 +17,19 @@
 #ifndef WASMBOX_INTERPRETER_H
 #define WASMBOX_INTERPRETER_H
 
-#include <stdlib.h> // exit
-#include "wasmbox/wasmbox.h"
 #include "opcodes.h"
+#include "wasmbox/wasmbox.h"
+
+#include <stdlib.h> // exit
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end, const char *indent);
-void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code, wasmbox_value_t *stack);
+void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end,
+                           const char *indent);
+void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
+                           wasmbox_value_t *stack);
 
 #ifdef __cplusplus
 }
