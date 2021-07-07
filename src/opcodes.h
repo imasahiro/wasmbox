@@ -23,6 +23,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 typedef enum wasm_block_type_t {
     WASMBOX_BLOCK_TYPE_NONE = 0,
     WASMBOX_BLOCK_TYPE_VAL = 1,

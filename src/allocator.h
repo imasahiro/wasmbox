@@ -21,6 +21,10 @@
 #ifndef WASMBOX_ALLOCATOR_H
 #define WASMBOX_ALLOCATOR_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static inline void *wasmbox_malloc(wasm_u32_t size) {
     void *mem = malloc(size);
     bzero(mem, size);
@@ -34,5 +38,9 @@ static inline void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
 static inline void wasmbox_free(void *ptr) {
     free(ptr);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //WASMBOX_ALLOCATOR_H
