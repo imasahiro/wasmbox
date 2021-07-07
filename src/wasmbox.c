@@ -862,7 +862,6 @@ static int parse_local_variables(wasmbox_input_stream_t *ins, wasmbox_mutable_fu
         if (parse_local_variable(ins, &localidx, &type)) {
             return -1;
         }
-        fprintf(stdout, "%llu: local%llu(type=%d)\n", i, localidx, type);
         func->base.locals += localidx;
     }
     func->stack_top += func->base.locals;
@@ -873,8 +872,6 @@ static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod, wa
     wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->functions[funcindex];
     wasm_u64_t size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     wasm_u64_t index = ins->index;
-    fprintf(stdout, "code(size:%llu)\n", size);
-    dump_binary(ins, size);
     if (parse_local_variables(ins, func)) {
         return -1;
     }
@@ -1044,6 +1041,7 @@ static int parse_global_section(wasmbox_input_stream_t *ins, wasm_u64_t section_
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     if (len > 0) {
         mod->globals = wasmbox_malloc(sizeof(*mod->globals) * len);
+        mod->global_size = len;
     }
     for (wasm_u64_t i = 0; i < len; i++) {
         if (parse_global_variable(ins, mod) != 0) {
@@ -1079,7 +1077,9 @@ static int parse_export_entry(wasmbox_input_stream_t *ins, wasmbox_module_t *mod
     }
     wasm_u32_t index = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
     if (type != 0x00) {
+#if 0
         fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
+#endif
         wasmbox_free(name);
     } else {
         mod->functions[index]->name = name;
@@ -1089,7 +1089,6 @@ static int parse_export_entry(wasmbox_input_stream_t *ins, wasmbox_module_t *mod
 
 static int parse_export_section(wasmbox_input_stream_t *ins, wasm_u64_t section_size, wasmbox_module_t *mod) {
     wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "export (num:%llu)\n", len);
     for (wasm_u64_t i = 0; i < len; i++) {
         if (parse_export_entry(ins, mod) != 0) {
             return -1;
@@ -1195,7 +1194,6 @@ static int parse_section(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
     wasm_u8_t section_type = wasmbox_input_stream_read_u8(ins);
     assert(0 <= section_type && section_type <= 11);
     wasm_u64_t section_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index, ins->length);
-    fprintf(stdout, "type=%d(%s), section_size=%llu\n", section_type, section_parser[section_type].name, section_size);
     return section_parser[section_type].func(ins, section_size, mod);
 }
 
@@ -1226,6 +1224,9 @@ static void wasmbox_module_dump(wasmbox_module_t *mod)
     if (mod->global_function) {
         print_function(mod->global_function, 0);
         fprintf(stdout, "\n");
+    }
+    if (mod->global_size) {
+        fprintf(stdout, "global variables: %d\n", mod->global_size);
     }
     for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
         wasmbox_function_t *f = mod->functions[i];
