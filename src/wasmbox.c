@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__)
+#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE__, __LINE__)
 
 /* Module API */
 #define MODULE_TYPES_INIT_SIZE 4

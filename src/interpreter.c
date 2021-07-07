@@ -20,7 +20,7 @@
 #include "allocator.h"
 #include "interpreter.h"
 
-#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE_NAME__, __LINE__)
+#define LOG(MSG) fprintf(stderr, "(%s:%d)" MSG, __FILE__, __LINE__)
 
 #define NOT_IMPLEMENTED() do { \
     LOG("not-implemented");    \
