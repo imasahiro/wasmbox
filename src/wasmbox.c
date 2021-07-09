@@ -163,7 +163,13 @@ static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
     }
     memcpy(func->base.code + block->start, block->code,
            sizeof(wasmbox_code_t) * block->code_size);
+    wasmbox_free(block->code);
   }
+  wasmbox_free(func->blocks);
+  wasmbox_free(func->operand_stack);
+  func->operand_stack = NULL;
+  func->stack_top = -1;
+  func->current_block = NULL;
 }
 
 static int wasmbox_block_add(wasmbox_mutable_function_t *func) {
@@ -866,7 +872,7 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 #define FUNC(op, param, type, inst, vmopcode) \
   case (op):                                  \
     return wasmbox_code_add_##param##_op(func, vmopcode);
-      NUMERIC_INST_EACH(FUNC)
+    NUMERIC_INST_EACH(FUNC)
 #undef FUNC
     default:
       return -1;
@@ -966,7 +972,7 @@ static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                                                   &ins->index, ins->length);
   wasm_u64_t index = ins->index;
 #if 0
-    fprintf(stdout, "code(size:%llu)\n", size);
+  fprintf(stdout, "code(size:%llu)\n", size);
     dump_binary(ins, size);
 #endif
   if (parse_local_variables(ins, func)) {
@@ -1209,7 +1215,7 @@ static int parse_export_entry(wasmbox_input_stream_t *ins,
                                                    &ins->index, ins->length);
   if (type != 0x00) {
 #if 0
-        fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
+    fprintf(stdout, "- export '%.*s' %s(%d)\n", name->len, name->value, debug_name, index);
 #endif
     wasmbox_free(name);
   } else {
@@ -1335,7 +1341,7 @@ static int parse_section(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
   wasm_u64_t section_size = wasmbox_parse_unsigned_leb128(
       ins->data + ins->index, &ins->index, ins->length);
 #if 0
-    fprintf(stdout, "type=%d(%s), section_size=%llu\n", section_type, section_parser[section_type].name, section_size);
+  fprintf(stdout, "type=%d(%s), section_size=%llu\n", section_type, section_parser[section_type].name, section_size);
 #endif
   return section_parser[section_type].func(ins, section_size, mod);
 }
@@ -1405,11 +1411,25 @@ int wasmbox_module_dispose(wasmbox_module_t *mod) {
   }
   wasmbox_free(mod->types);
   for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-    wasmbox_free(mod->functions[i]->name);
-    wasmbox_free(mod->functions[i]);
+    wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->functions[i];
+    if (func->base.name != NULL) {
+      wasmbox_free(func->base.name);
+    }
+    wasmbox_free(func->base.code);
+    wasmbox_free(func);
   }
   wasmbox_free(mod->functions);
-  wasmbox_free(mod->global_function);
-  wasmbox_free(mod->memory_block);
+  if (mod->global_function) {
+    wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->global_function;
+    wasmbox_free(func->base.name);
+    wasmbox_free(func->base.code);
+    wasmbox_free(func);
+  }
+  if (mod->global_size > 0) {
+    wasmbox_free(mod->globals);
+  }
+  if (mod->memory_block) {
+    wasmbox_free(mod->memory_block);
+  }
   return 0;
 }
