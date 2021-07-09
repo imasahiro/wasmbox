@@ -15,6 +15,7 @@
  */
 
 #include "wasmbox/wasmbox.h"
+#include "allocator.h"
 
 #include <float.h>
 #include <stdio.h>
@@ -135,5 +136,6 @@ int main(int argc, char const *argv[]) {
     return -1;
   }
   wasmbox_module_dispose(&mod);
+  wasmbox_allocator_report_statics();
   return check_result(expected_index, stack, expected, expected_type);
 }

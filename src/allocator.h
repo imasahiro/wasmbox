@@ -16,6 +16,7 @@
 
 #include "wasmbox/wasmbox.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,19 +27,10 @@
 extern "C" {
 #  endif
 
-static inline void *wasmbox_malloc(wasm_u32_t size) {
-  void *mem = malloc(size);
-  bzero(mem, size);
-  return mem;
-}
-
-static inline void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
-  return realloc(ptr, size);
-}
-
-static inline void wasmbox_free(void *ptr) {
-  free(ptr);
-}
+void *wasmbox_malloc(wasm_u32_t size);
+void *wasmbox_realloc(void *ptr, wasm_u32_t size);
+void wasmbox_free(void *ptr);
+void wasmbox_allocator_report_statics();
 
 #  ifdef __cplusplus
 }

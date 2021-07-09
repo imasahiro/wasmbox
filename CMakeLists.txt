@@ -3,7 +3,7 @@ project(WasmBox LANGUAGES C VERSION 0.0.1)
 
 set(CMAKE_C_STANDARD 11)
 
-add_library(WasmBox src/wasmbox.c src/input-stream.c src/leb128.c src/interpreter.c)
+add_library(WasmBox src/wasmbox.c src/input-stream.c src/leb128.c src/interpreter.c src/allocator.c)
 
 set(INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${INCLUDE_DIRS})
