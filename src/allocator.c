@@ -24,6 +24,9 @@ void *wasmbox_malloc(wasm_u32_t size) {
   wasm_s32_t *mem = (wasm_s32_t *) malloc(size + sizeof(wasm_s32_t));
   bzero(&mem[1], size);
   mem[0] = (wasm_s32_t) size;
+#ifdef WASMBOX_ALLOCATOR_DEBUG_TRACE
+  fprintf(stdout, "A: %p %d\n", mem, size);
+#endif
   allocated += size;
   return &mem[1];
 }
@@ -33,6 +36,10 @@ void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
   wasm_s32_t old = mem[0];
   mem = (wasm_s32_t *) realloc(mem, size + sizeof(wasm_s32_t));
   mem[0] = (wasm_s32_t) size;
+#ifdef WASMBOX_ALLOCATOR_DEBUG_TRACE
+  fprintf(stdout, "R: %p -> %p %d -> %d\n", &((wasm_s32_t *) ptr)[-1], mem, old,
+          size);
+#endif
   allocated += size - old;
   return &mem[1];
 }
@@ -40,6 +47,9 @@ void *wasmbox_realloc(void *ptr, wasm_u32_t size) {
 void wasmbox_free(void *ptr) {
   wasm_s32_t *mem = &((wasm_s32_t *) ptr)[-1];
   freed += mem[0];
+#ifdef WASMBOX_ALLOCATOR_DEBUG_TRACE
+  fprintf(stdout, "F: %p %d\n", mem, mem[0]);
+#endif
   free(mem);
 }
 
@@ -47,7 +57,7 @@ void wasmbox_allocator_report_statics() {
   fprintf(stdout, "allocated: %lld byte (%lld KB)\n", allocated, allocated / 1024);
   fprintf(stdout, "freed:     %lld byte (%lld KB)\n", freed, freed / 1024);
   if (allocated != freed) {
-    fprintf(stderr, "allocated != freed");
+    fprintf(stdout, "allocated != freed");
     exit(-1);
   }
 }

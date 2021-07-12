@@ -59,7 +59,7 @@ struct wasmbox_block_t {
 
 typedef struct wasmbox_mutable_function_t {
   wasmbox_function_t base;
-  wasmbox_block_t *current_block;
+  wasm_s16_t current_block_id;
   wasmbox_block_t *blocks;
   wasm_u16_t block_size;
   wasm_u16_t block_capacity;
