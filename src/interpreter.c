@@ -254,9 +254,6 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       LP(I64_EXTEND8_S),
       LP(I64_EXTEND16_S),
       LP(I64_EXTEND32_S),
-      LP(LOCAL_GET),
-      NULL /*local set*/,
-      LP(LOCAL_TEE),
       LP(GLOBAL_GET),
       LP(GLOBAL_SET),
       LP(I32_LOAD),
@@ -370,14 +367,6 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       stack = stack_top;
       code = func->code;
       GOTO_NEXT(code);
-    }
-    CASE(LOCAL_GET) {
-      stack[code->op0.reg].u64 = stack[code->op1.reg].u64;
-      code++;
-      GOTO_NEXT(code);
-    }
-    CASE(LOCAL_TEE) {
-      NOT_IMPLEMENTED();
     }
     CASE(GLOBAL_GET) {
       stack[code->op0.reg].u64 = mod->globals[code->op1.reg].u64;
@@ -1119,12 +1108,6 @@ void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end,
                 code->op1.func->type->argument_size,
                 code->op1.func->type->argument_size);
         break;
-      case OPCODE_LOCAL_GET:
-        fprintf(stdout, "%sstack[%d].u64= stack[%d].u64\n", indent,
-                code->op0.reg, code->op1.reg);
-        break;
-      case OPCODE_LOCAL_TEE:
-        NOT_IMPLEMENTED();
       case OPCODE_GLOBAL_GET:
         fprintf(stdout, "%sstack[%d].u64= global[%d].u64\n", indent,
                 code->op0.reg, code->op1.reg);

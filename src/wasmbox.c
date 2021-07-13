@@ -261,16 +261,12 @@ static void wasmbox_code_add_const(wasmbox_mutable_function_t *func,
   wasmbox_code_add(func, &code);
 }
 
-static void wasmbox_code_add_variable(wasmbox_mutable_function_t *func,
-                                      int vmopcode, wasm_u32_t index) {
+static void wasmbox_code_add_global(wasmbox_mutable_function_t *func,
+                                    int vmopcode, wasm_u32_t index) {
   wasmbox_code_t code;
   code.h.opcode = vmopcode;
   code.op0.reg = wasmbox_function_push_stack(func);
-  if (vmopcode == OPCODE_GLOBAL_GET || vmopcode == OPCODE_GLOBAL_SET) {
-    code.op1.index = index;
-  } else {
-    code.op1.index = WASMBOX_FUNCTION_CALL_OFFSET + index;
-  }
+  code.op1.index = index;
   wasmbox_code_add(func, &code);
 }
 
@@ -748,6 +744,7 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins,
                                 wasm_u8_t op) {
   wasm_u64_t idx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                  &ins->index, ins->length);
+  wasm_s16_t reg;
   switch (op) {
     case 0x20: // local.get
       wasmbox_code_add_move(func, WASMBOX_FUNCTION_CALL_OFFSET + idx,
@@ -758,13 +755,14 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins,
                             WASMBOX_FUNCTION_CALL_OFFSET + idx);
       return 0;
     case 0x22: // local.tee
-      wasmbox_code_add_variable(func, OPCODE_LOCAL_TEE, idx);
+      wasmbox_code_add_move(func, wasmbox_function_peek_stack(func),
+                            WASMBOX_FUNCTION_CALL_OFFSET + idx);
       return 0;
     case 0x23: // global.get
-      wasmbox_code_add_variable(func, OPCODE_GLOBAL_GET, idx);
+      wasmbox_code_add_global(func, OPCODE_GLOBAL_GET, idx);
       return 0;
     case 0x24: // global.set
-      wasmbox_code_add_variable(func, OPCODE_GLOBAL_SET, idx);
+      wasmbox_code_add_global(func, OPCODE_GLOBAL_SET, idx);
       return 0;
     default:
       return -1;
@@ -1159,7 +1157,8 @@ static int parse_memory_section(wasmbox_input_stream_t *ins,
 }
 
 static int parse_global_variable(wasmbox_input_stream_t *ins,
-                                 wasmbox_module_t *mod) {
+                                 wasmbox_module_t *mod,
+                                 wasmbox_mutable_function_t *global) {
   wasmbox_value_type_t valtype;
   if (parse_value_type(ins, &valtype) != 0) {
     return -1;
@@ -1170,30 +1169,10 @@ static int parse_global_variable(wasmbox_input_stream_t *ins,
     LOG("unreachable");
     return -1;
   }
-  wasmbox_mutable_function_t *global =
-      (wasmbox_mutable_function_t *) mod->global_function;
-  if (global == NULL) {
-    global = (wasmbox_mutable_function_t *) wasmbox_malloc(
-        sizeof(wasmbox_mutable_function_t));
-    global->current_block_id = -1;
-    mod->global_function = &global->base;
-    wasm_u32_t len = strlen("__global__");
-    global->base.name =
-        (wasmbox_name_t *) wasmbox_malloc(sizeof(*global->base.name) + len);
-    global->base.name->len = len;
-    memcpy(global->base.name->value, "__global__", len);
-  }
-  // We already compiled another global section. Erase last EXIT op to merge a
-  // global function to previous one.
-  if (global->base.code != NULL &&
-      global->base.code[global->base.code_size - 1].h.opcode == OPCODE_EXIT) {
-    global->base.code_size -= 1;
-  }
+
   if (parse_expression(ins, mod, global) < 0) {
     return -1;
   }
-  wasmbox_code_add_exit(global);
-  wasmbox_function_freeze(mod, global);
   return 0;
 }
 
@@ -1206,11 +1185,28 @@ static int parse_global_section(wasmbox_input_stream_t *ins,
     mod->globals = wasmbox_malloc(sizeof(*mod->globals) * len);
     mod->global_size = len;
   }
+  wasmbox_mutable_function_t *global =
+      (wasmbox_mutable_function_t *) mod->global_function;
+  if (global == NULL) {
+    static const char global_name[] = "__global__";
+    static const wasm_u32_t global_name_len = 10;
+    global = (wasmbox_mutable_function_t *) wasmbox_malloc(
+        sizeof(wasmbox_mutable_function_t));
+    global->current_block_id = -1;
+    global->base.name = (wasmbox_name_t *) wasmbox_malloc(
+        sizeof(wasmbox_name_t) + global_name_len);
+    global->base.name->len = global_name_len;
+    memcpy(global->base.name->value, global_name, global_name_len);
+
+    mod->global_function = &global->base;
+  }
   for (wasm_u64_t i = 0; i < len; i++) {
-    if (parse_global_variable(ins, mod) != 0) {
+    if (parse_global_variable(ins, mod, global) != 0) {
       return -1;
     }
   }
+  wasmbox_code_add_exit(global);
+  wasmbox_function_freeze(mod, global);
   return 0;
 }
 

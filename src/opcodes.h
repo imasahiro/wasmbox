@@ -93,11 +93,11 @@ typedef struct wasmbox_op_decorder_t {
   OP_INST_0(0x1B, any, select, OPCODE_SELECT)
 
 /* Variable Instruction */
-#define VARIABLE_INST_EACH(OP_INST_PARAM1)                                \
-  OP_INST_PARAM1(0x20, x : localidx, any, local_get, OPCODE_LOCAL_GET)    \
-  OP_INST_PARAM1(0x21, x : localidx, any, local_set, OPCODE_LOCAL_SET)    \
-  OP_INST_PARAM1(0x22, x : localidx, any, local_tee, OPCODE_LOCAL_TEE)    \
-  OP_INST_PARAM1(0x23, x : globalidx, any, global_get, OPCODE_GLOBAL_GET) \
+#define VARIABLE_INST_EACH(OP_INST_PARAM1)                                 \
+  /*OP_INST_PARAM1(0x20, x : localidx, any, local_get, OPCODE_LOCAL_GET)*/ \
+  /*OP_INST_PARAM1(0x21, x : localidx, any, local_set, OPCODE_LOCAL_SET)*/ \
+  /*OP_INST_PARAM1(0x22, x : localidx, any, local_tee, OPCODE_LOCAL_TEE)*/ \
+  OP_INST_PARAM1(0x23, x : globalidx, any, global_get, OPCODE_GLOBAL_GET)  \
   OP_INST_PARAM1(0x24, x : globalidx, any, global_set, OPCODE_GLOBAL_SET)
 
 /* Memory Instructions */
