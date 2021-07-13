@@ -363,10 +363,12 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       GOTO_NEXT(code);
     }
     CASE(DYNAMIC_CALL) {
-      wasmbox_function_t *func = mod->functions[code->op1.index];
-      code->h.opcode = OPCODE_STATIC_CALL;
-      code->op1.func = func;
-      /* Re-execute */
+      wasmbox_function_t *func = mod->tables[0]->labels[code->op1.index].func;
+      wasmbox_value_t *stack_top = &stack[code->op0.reg] + code->op2.index;
+      stack_top[0].u64 = (wasm_u64_t) (uintptr_t) stack;
+      stack_top[1].u64 = (wasm_u64_t) (uintptr_t) (code + 1);
+      stack = stack_top;
+      code = func->code;
       GOTO_NEXT(code);
     }
     CASE(STATIC_CALL) {

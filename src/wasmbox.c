@@ -405,11 +405,14 @@ static void wasmbox_code_add_jump(wasmbox_mutable_function_t *func,
   }
 }
 
-#define TYPE_EACH(FUNC)          \
-  FUNC(0x7f, WASM_TYPE_I32, I32) \
-  FUNC(0x7e, WASM_TYPE_I64, I64) \
-  FUNC(0x7d, WASM_TYPE_F32, F32) \
-  FUNC(0x7c, WASM_TYPE_F64, F64)
+#define TYPE_EACH(FUNC)                  \
+  FUNC(0x7f, WASM_TYPE_I32, I32)         \
+  FUNC(0x7e, WASM_TYPE_I64, I64)         \
+  FUNC(0x7d, WASM_TYPE_F32, F32)         \
+  FUNC(0x7c, WASM_TYPE_F64, F64)         \
+  FUNC(0x70, WASM_TYPE_FUNCREF, FUNCREF) \
+  FUNC(0x6f, WASM_TYPE_EXTERNREF, EXTERNREF)
+
 static const char *value_type_to_string(wasmbox_value_type_t type) {
   switch (type) {
 #define FUNC(opcode, type_enum, type_name) \
@@ -580,6 +583,25 @@ static int parse_expression(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
     if (parse_instruction(ins, mod, func)) {
       return -1;
     }
+  }
+  return 0;
+}
+
+static int eval_expression(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                           wasmbox_value_t *result) {
+  wasmbox_value_t stack[8];
+  wasmbox_mutable_function_t func = {};
+  func.current_block_id = -1;
+  if (parse_expression(ins, mod, &func) < 0) {
+    return -1;
+  }
+  wasmbox_code_add_move(&func, wasmbox_function_pop_stack(&func), -1);
+  wasmbox_code_add_exit(&func);
+  wasmbox_function_freeze(mod, &func);
+  wasmbox_eval_function(mod, func.base.code, stack + 1);
+  *result = stack[0];
+  if (func.base.code_size > 0) {
+    wasmbox_free(func.base.code);
   }
   return 0;
 }
@@ -783,6 +805,18 @@ static int decode_return(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
   return 0;
 }
 
+static wasm_u16_t setup_params(wasmbox_mutable_function_t *func,
+                               wasmbox_type_t *type) {
+  wasm_u16_t stack_top = func->stack_top;
+  wasm_u16_t argument_to =
+      stack_top + type->return_size + WASMBOX_FUNCTION_CALL_OFFSET;
+  for (int i = 0; i < type->argument_size; ++i) {
+    wasmbox_code_add_move(func, wasmbox_function_pop_stack(func),
+                          argument_to + i);
+  }
+  return stack_top;
+}
+
 // BLOCK_INST(0x11, x:typeidx 0x00, call_indirect x)
 static int decode_call(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                        wasmbox_mutable_function_t *func, wasm_u8_t op) {
@@ -793,13 +827,7 @@ static int decode_call(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
     LOG("Failed to find function\n");
     return -1;
   }
-  wasm_u16_t stack_top = func->stack_top;
-  wasm_u16_t argument_to =
-      stack_top + call->type->return_size + WASMBOX_FUNCTION_CALL_OFFSET;
-  for (int i = 0; i < call->type->argument_size; ++i) {
-    wasmbox_code_add_move(func, wasmbox_function_pop_stack(func),
-                          argument_to + i);
-  }
+  wasm_u16_t stack_top = setup_params(func, call->type);
   wasmbox_code_t code;
   code.h.opcode = OPCODE_STATIC_CALL;
   code.op0.reg = stack_top;
@@ -812,14 +840,27 @@ static int decode_call(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
   return 0;
 }
 
-// INST(0x11 x:typeidx 0x00, call_indirect x)
+// INST(0x11 x:tableidx, y:typeidx call_indirect x)
 static int decode_call_indirect(wasmbox_input_stream_t *ins,
                                 wasmbox_module_t *mod,
                                 wasmbox_mutable_function_t *func,
                                 wasm_u8_t op) {
   wasm_u64_t typeidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                      &ins->index, ins->length);
-  fprintf(stdout, "call_indirect %llu\n", typeidx);
+  wasm_u64_t tableidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                                      &ins->index, ins->length);
+  wasmbox_type_t *type = mod->types[typeidx];
+  wasm_u16_t stack_top = setup_params(func, type);
+
+  wasmbox_code_t code;
+  code.h.opcode = OPCODE_DYNAMIC_CALL;
+  code.op0.reg = stack_top;
+  for (int i = 0; i < type->return_size; ++i) {
+    wasmbox_function_push_stack(func);
+  }
+  code.op1.index = tableidx;
+  code.op2.index = type->return_size;
+  wasmbox_code_add(func, &code);
   return 0;
 }
 
@@ -851,6 +892,19 @@ static int decode_variable_inst(wasmbox_input_stream_t *ins,
       return 0;
     default:
       return -1;
+  }
+  return -1;
+}
+
+static int decode_table_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                             wasmbox_mutable_function_t *func, wasm_u8_t op) {
+  wasm_u32_t tableidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                                      &ins->index, ins->length);
+  switch (op) {
+    case 0x25: // table.get x
+      break;
+    case 0x26: // table.set x
+      break;
   }
   return -1;
 }
@@ -1021,6 +1075,7 @@ static const wasmbox_op_decorder_t decoders[] = {
     {0x11, 0x11, decode_call_indirect},
     {0x1A, 0x1B, decode_op0_inst},
     {0x20, 0x24, decode_variable_inst},
+    {0x25, 0x26, decode_table_inst},
     {0x28, 0x3E, decode_memory_inst},
     {0x3F, 0x40, decode_memory_size_and_grow},
     {0x41, 0x44, decode_constant_inst},
@@ -1220,9 +1275,21 @@ static int parse_function_section(wasmbox_input_stream_t *ins,
 
 static int parse_table_section(wasmbox_input_stream_t *ins,
                                wasm_u64_t section_size, wasmbox_module_t *mod) {
-  fprintf(stdout, "table\n");
-  dump_binary(ins, section_size);
-  ins->index += section_size;
+  wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                                 &ins->index, ins->length);
+  for (wasm_u64_t i = 0; i < len; i++) {
+    wasmbox_value_type_t type;
+    wasmbox_limit_t limit;
+    if (parse_value_type(ins, &type) != 0) {
+      return -1;
+    }
+    if (parse_limit(ins, &limit) != 0) {
+      return -1;
+    }
+  }
+  mod->table_size = len;
+  mod->tables =
+      (wasmbox_table_t **) wasmbox_malloc(sizeof(wasmbox_table_t *) * len);
   return 0;
 }
 
@@ -1356,12 +1423,102 @@ static int parse_start_section(wasmbox_input_stream_t *ins,
   return 0;
 }
 
+static int parse_func_index_vector(wasmbox_input_stream_t *ins,
+                                   wasmbox_module_t *mod, wasm_u32_t tableidx,
+                                   wasm_u32_t offset) {
+  wasm_u32_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                                 &ins->index, ins->length);
+  assert(tableidx < mod->table_size);
+  wasmbox_table_t *table = mod->tables[tableidx];
+  if (table == NULL) {
+    table = (wasmbox_table_t *) wasmbox_malloc(sizeof(wasmbox_table_t) +
+                                               sizeof(wasmbox_code_t *) * len);
+    mod->tables[tableidx] = table;
+  }
+  for (wasm_u32_t i = 0; i < len; i++) {
+    wasm_u32_t funcidx = wasmbox_parse_unsigned_leb128(
+        ins->data + ins->index, &ins->index, ins->length);
+    if (funcidx > mod->function_size) {
+      LOG("table: out of index");
+      return -1;
+    }
+    table->labels[i].func = mod->functions[funcidx];
+  }
+  return 0;
+}
+
+static int parse_element(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
+                         wasm_u32_t id) {
+  wasm_u8_t type = wasmbox_input_stream_read_u8(ins);
+  uint8_t elemkind = -1;
+  wasm_u32_t tableidx = 0;
+  enum table_mode { TABLE_ACTIVE, TABLE_DECLARATIVE, TABLE_PASSIVE } mode;
+  wasmbox_value_t offset;
+  offset.u32 = 0;
+  switch (type) {
+    case 0x00:
+      // e:expr y*:vec(funcidx)
+      // {type funcref, init ((ref.func y) end)*, mode active
+      //   {table 0, offset e}}
+      if (eval_expression(ins, mod, &offset) < 0) {
+        return -1;
+      }
+      return parse_func_index_vector(ins, mod, tableidx, offset.u32);
+    case 0x01:
+      // et: elemkind y*:vec(funcidx)
+      // {type et, init ((ref.func y) end)*, mode passive}
+      elemkind = wasmbox_input_stream_read_u8(ins);
+      assert(elemkind == 0);
+      return parse_func_index_vector(ins, mod, tableidx, 0);
+    case 0x02:
+      // x:tableidx e:expr et : elemkind y*:vec(funcidx)
+      // {type et, init ((ref.func y) end)*, mode active {table x, offset e}}
+      tableidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                               &ins->index, ins->length);
+      if (eval_expression(ins, mod, &offset) < 0) {
+        return -1;
+      }
+      elemkind = wasmbox_input_stream_read_u8(ins);
+      assert(elemkind == 0);
+      return parse_func_index_vector(ins, mod, tableidx, offset.u32);
+    case 0x03:
+      // et: elemkind y*:vec(funcidx)
+      // {type et, init ((ref.func 𝑦) end)*, mode declarative}
+      elemkind = wasmbox_input_stream_read_u8(ins);
+      assert(elemkind == 0);
+      return parse_func_index_vector(ins, mod, tableidx, offset.u32);
+    case 0x04:
+      // e:expr el* :vec(expr)
+      // {type funcref, init el*, mode active {table 0, offset e}}
+      if (eval_expression(ins, mod, &offset) < 0) {
+        return -1;
+      }
+      // return parse_expression_vector();
+    case 0x05:
+      // et: reftype el*:vec(expr)
+      // {type et, init el*, mode passive}
+    case 0x06:
+      // x:tableidx e:expr et: reftype el* :vec(expr)
+      // {type et, init el*, mode active {table x, offset e}}
+    case 0x07:
+      // et : reftype e * :vec(expr)
+      break;
+    default:
+      return -1;
+  }
+  return -1;
+}
+
 static int parse_element_section(wasmbox_input_stream_t *ins,
                                  wasm_u64_t section_size,
                                  wasmbox_module_t *mod) {
-  fprintf(stdout, "element\n");
-  dump_binary(ins, section_size);
-  ins->index += section_size;
+  wasm_u32_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
+                                                 &ins->index, ins->length);
+  for (wasm_u32_t i = 0; i < len; i++) {
+    if (parse_element(ins, mod, i)) {
+      return -1;
+    }
+  }
   return 0;
 }
 
@@ -1385,8 +1542,8 @@ static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
   wasmbox_mutable_function_t func = {};
   func.current_block_id = -1;
 
-  wasmbox_value_t stack[8];
-  wasm_u32_t offset = 0;
+  wasmbox_value_t offset;
+  offset.u32 = 0;
   switch (type) {
     case 0x02: // active with memory index
       index = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index,
@@ -1394,26 +1551,18 @@ static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
       assert(index == 0);
       /* fallthrough */
     case 0x00: // active without memory index
-      if (parse_expression(ins, mod, &func) < 0) {
+      if (eval_expression(ins, mod, &offset) < 0) {
         return -1;
       }
-      wasmbox_code_add_move(&func, wasmbox_function_pop_stack(&func), -1);
-      wasmbox_code_add_exit(&func);
-      wasmbox_function_freeze(mod, &func);
-      wasmbox_eval_function(mod, func.base.code, stack + 1);
-      offset = stack[0].u32;
       /* fallthrough */
     case 0x01: // passive
       len = wasmbox_parse_unsigned_leb128(ins->data + ins->index, &ins->index,
                                           ins->length);
-      memcpy(mod->memory_block->data + offset, ins->data + ins->index, len);
+      memcpy(mod->memory_block->data + offset.u32, ins->data + ins->index, len);
       ins->index += len;
       break;
     default:
       return -1;
-  }
-  if (func.base.code_size > 0) {
-    wasmbox_free(func.base.code);
   }
   return 0;
 }
@@ -1540,8 +1689,15 @@ int wasmbox_module_dispose(wasmbox_module_t *mod) {
     wasmbox_free(func);
   }
   wasmbox_free(mod->functions);
+  if (mod->table_size > 0) {
+    for (int i = 0; i < mod->table_size; ++i) {
+      wasmbox_free(mod->tables[i]);
+    }
+    wasmbox_free(mod->tables);
+  }
   if (mod->global_function) {
-    wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->global_function;
+    wasmbox_mutable_function_t *func =
+        (wasmbox_mutable_function_t *) mod->global_function;
     wasmbox_free(func->base.name);
     wasmbox_free(func->base.code);
     wasmbox_free(func);
