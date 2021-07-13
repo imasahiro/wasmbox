@@ -57,6 +57,7 @@ struct wasmbox_block_t {
   wasm_u32_t end;
   wasm_u16_t parent_id;
   wasm_u16_t next_id;
+  wasm_u8_t already_terminated;
 };
 
 typedef struct wasmbox_mutable_function_t {

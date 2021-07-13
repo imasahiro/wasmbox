@@ -211,6 +211,7 @@ static wasm_s16_t wasmbox_block_add(wasmbox_mutable_function_t *func) {
   block->code = NULL;
   block->code_size = 0;
   block->code_capacity = 0;
+  block->already_terminated = 0;
   return block_index;
 }
 
@@ -238,6 +239,10 @@ static void wasmbox_code_add(wasmbox_mutable_function_t *func,
     func->current_block_id = wasmbox_block_add(func);
   }
   wasmbox_block_t *block = &func->blocks[func->current_block_id];
+  if (block->already_terminated != 0) {
+    // Block is already terminated. No need to emit rest of code"
+    return;
+  }
   if (block->code == NULL) {
     block->code = (wasmbox_code_t *) wasmbox_malloc(sizeof(wasmbox_code_t) *
                                                     MODULE_CODE_INIT_SIZE);
@@ -335,6 +340,10 @@ static void wasmbox_code_add_jump(wasmbox_mutable_function_t *func,
   }
   code.op2.index = (wasm_u32_t) direction;
   wasmbox_code_add(func, &code);
+  wasmbox_block_t *block = &func->blocks[func->current_block_id];
+  if (vmopcode == OPCODE_JUMP) {
+    block->already_terminated = 1;
+  }
 }
 
 #define TYPE_EACH(FUNC)          \
@@ -444,27 +453,30 @@ static int parse_type_vector(wasmbox_input_stream_t *ins, wasm_u32_t len,
 }
 
 static wasmbox_type_t *parse_function_type(wasmbox_input_stream_t *ins) {
-  wasmbox_value_type_t types[16];
   wasm_u8_t ch = wasmbox_input_stream_read_u8(ins);
   assert(ch == 0x60);
   wasm_u32_t args_size = wasmbox_parse_unsigned_leb128(
       ins->data + ins->index, &ins->index, ins->length);
-  assert(args_size < 16);
-  if (parse_type_vector(ins, args_size, types) != 0) {
-    return NULL;
-  }
+
+  wasm_u32_t current_pos = ins->index;
+  // Skip argument parsing to know total args+returns size.
+  ins->index += args_size;
+
   wasm_u32_t ret_size = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                       &ins->index, ins->length);
-  assert(ret_size < 16);
   wasmbox_type_t *func_type = (wasmbox_type_t *) wasmbox_malloc(
       sizeof(*func_type) +
       sizeof(wasmbox_value_type_t *) * (args_size + ret_size));
   func_type->argument_size = args_size;
   func_type->return_size = ret_size;
-  for (wasm_u32_t i = 0; i < args_size; ++i) {
-    func_type->args[i] = types[i];
+
+  wasm_u32_t after_return_size = ins->index;
+  ins->index = current_pos;
+  if (parse_type_vector(ins, args_size, func_type->args) != 0) {
+    return NULL;
   }
 
+  ins->index = after_return_size;
   if (parse_type_vector(ins, func_type->return_size,
                         func_type->args + args_size) != 0) {
     return NULL;
@@ -578,7 +590,8 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_module_t *mod,
                             wasmbox_mutable_function_t *func, wasm_u8_t op) {
   wasmbox_code_t code;
-  if (func->base.type->return_size > 0) {
+  wasmbox_block_t *block = &func->blocks[func->current_block_id];
+  if (func->base.type->return_size > 0 && block->already_terminated == 0) {
     wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
   }
   code.h.opcode = OPCODE_RETURN;
@@ -875,6 +888,8 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
     case 0x00: // unreachable
       code.h.opcode = OPCODE_UNREACHABLE;
       wasmbox_code_add(func, &code);
+      wasmbox_block_t *block = &func->blocks[func->current_block_id];
+      block->already_terminated = 1;
       return 0;
     case 0x01: // nop
       return 0;
