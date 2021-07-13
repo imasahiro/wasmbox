@@ -128,6 +128,23 @@ static wasm_s16_t wasmbox_function_pop_stack(wasmbox_mutable_function_t *func) {
 
 static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
   wasm_u32_t code_size = 0;
+
+  for (wasm_u16_t i = 0; i < func->block_size; ++i) {
+    wasmbox_block_t *block = &func->blocks[i];
+    // Rewrite explicit jump if target block is next block.
+    // BB0: ...            | BB0: ...
+    //      JUMP BB1       |      nop
+    // BB1: do something   | BB1: do something
+    //      ...            |      ...
+    if (block->code[block->code_size - 1].h.opcode == OPCODE_JUMP) {
+      wasmbox_code_t *code = &block->code[block->code_size - 1];
+      wasmbox_block_t *target = &func->blocks[code->op0.index];
+      if (i + 1 < func->block_size && target == &func->blocks[i + 1]) {
+        code->h.opcode = OPCODE_NOP;
+        block->code_size -= 1;
+      }
+    }
+  }
   for (wasm_u16_t i = 0; i < func->block_size; ++i) {
     wasmbox_block_t *block = &func->blocks[i];
     block->start = code_size;
@@ -161,6 +178,7 @@ static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
         code->op0.code = func->base.code + offset;
       }
     }
+
     if (block->code_size > 0) {
       memcpy(func->base.code + block->start, block->code,
              sizeof(wasmbox_code_t) * block->code_size);
