@@ -24,6 +24,8 @@
 extern "C" {
 #endif
 
+#define WASMBOX_VM_USE_DIRECT_THREADED_CODE 1
+
 typedef enum wasm_block_type_t {
   WASMBOX_BLOCK_TYPE_NONE = 0,
   WASMBOX_BLOCK_TYPE_VAL = 1,
@@ -306,7 +308,11 @@ enum wasmbox_opcode {
   OPCODE_JUMP_IF,
   OPCODE_MOVE,
   OPCODE_DYNAMIC_CALL,
-  OPCODE_STATIC_CALL
+  OPCODE_STATIC_CALL,
+  /**
+   * Returns labels for each opcode.
+   */
+  OPCODE_THREADED_CODE,
 };
 
 #define WASMBOX_VM_DEBUG 1
@@ -326,7 +332,9 @@ static const char *debug_opcodes[] = {
     "OPCODE_JUMP_IF",
     "OPCODE_MOVE",
     "OPCODE_DYNAMIC_CALL",
-    "OPCODE_STATIC_CALL"};
+    "OPCODE_STATIC_CALL",
+    "OPCODE_THREADED_CODE",
+};
 #endif /* WASMBOX_VM_DEBUG */
 
 #ifdef __cplusplus

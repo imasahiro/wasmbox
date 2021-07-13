@@ -164,14 +164,29 @@ static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
     if (block->code_size > 0) {
       memcpy(func->base.code + block->start, block->code,
              sizeof(wasmbox_code_t) * block->code_size);
-      wasmbox_free(block->code);
     }
+  }
+}
+
+static int wasmbox_function_freeze(wasmbox_module_t *mod,
+                                   wasmbox_mutable_function_t *func) {
+  wasmbox_block_link(func);
+  for (wasm_u16_t i = 0; i < func->block_size; ++i) {
+    wasmbox_block_t *block = &func->blocks[i];
+    wasmbox_free(block->code);
   }
   wasmbox_free(func->blocks);
   wasmbox_free(func->operand_stack);
+#ifdef WASMBOX_VM_USE_DIRECT_THREADED_CODE
+  void **labels = (void **) mod->shared_code[0].op0.value.u64;
+  for (int i = 0; i < func->base.code_size; ++i) {
+    func->base.code[i].h.label = labels[func->base.code[i].h.opcode];
+  }
+#endif
   func->operand_stack = NULL;
   func->stack_top = -1;
   func->current_block_id = -1;
+  return 0;
 }
 
 static wasm_s16_t wasmbox_block_add(wasmbox_mutable_function_t *func) {
@@ -986,7 +1001,7 @@ static int parse_function(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
   wasmbox_block_switch(func, wasmbox_block_add(func));
   int parsed = parse_code(ins, mod, func, size);
   if (parsed == 0) {
-    wasmbox_block_link(func);
+    wasmbox_function_freeze(mod, func);
   }
   return parsed;
 }
@@ -1172,7 +1187,7 @@ static int parse_global_variable(wasmbox_input_stream_t *ins,
     return -1;
   }
   wasmbox_code_add_exit(global);
-  wasmbox_block_link(global);
+  wasmbox_function_freeze(mod, global);
   return 0;
 }
 
@@ -1295,7 +1310,7 @@ static int parse_data(wasmbox_input_stream_t *ins, wasmbox_module_t *mod) {
       }
       wasmbox_code_add_move(&func, wasmbox_function_pop_stack(&func), -1);
       wasmbox_code_add_exit(&func);
-      wasmbox_block_link(&func);
+      wasmbox_function_freeze(mod, &func);
       wasmbox_eval_function(mod, func.base.code, stack + 1);
       offset = stack[0].u32;
       /* fallthrough */
@@ -1403,6 +1418,7 @@ int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
     LOG("Failed to load file");
     return -1;
   }
+  wasmbox_virtual_machine_init(mod);
   int parsed = parse_module(ins, mod);
   if (parsed == 0) {
     wasmbox_module_dump(mod);

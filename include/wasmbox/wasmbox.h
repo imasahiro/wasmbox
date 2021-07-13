@@ -146,9 +146,9 @@ typedef wasmbox_value_t wasmbox_stack_t;
   } while (0)
 
 struct wasmbox_code_t {
-  union header {
-    wasm_u16_t opcode;
+  struct header {
     void *label;
+    wasm_u16_t opcode;
   } h;
   union wasmbox_code_operands op0;
   union wasmbox_code_operands op1;
@@ -173,13 +173,13 @@ typedef struct wasmbox_module_t {
   wasmbox_type_t **types;
   wasm_u32_t type_size;
   wasm_u32_t type_capacity;
+  wasmbox_code_t shared_code[2];
 } wasmbox_module_t;
 
 int wasmbox_load_module(wasmbox_module_t *mod, const char *file_name,
                         wasm_u16_t file_name_len);
 
-int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[],
-                        wasm_u16_t result_stack_size);
+int wasmbox_eval_module(wasmbox_module_t *mod, wasmbox_value_t stack[]);
 
 int wasmbox_module_dispose(wasmbox_module_t *mod);
 

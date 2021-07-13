@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-#include "wasmbox/wasmbox.h"
 #include "allocator.h"
+#include "wasmbox/wasmbox.h"
 
 #include <float.h>
+#include <opcodes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,7 +132,7 @@ int main(int argc, char const *argv[]) {
     fprintf(stdout, "Failed to load a module(%s).\n", argv[1]);
     return -1;
   }
-  if (wasmbox_eval_module(&mod, stack, 10) < 0) {
+  if (wasmbox_eval_module(&mod, stack) < 0) {
     fprintf(stdout, "Failed to evaluate a module(%s).\n", argv[1]);
     return -1;
   }
