@@ -93,6 +93,14 @@ typedef struct wasmbox_function_t {
   wasm_u16_t code_size;
 } wasmbox_function_t;
 
+typedef struct wasmbox_table_t {
+  wasm_u32_t size;
+  union table_entry {
+    wasmbox_code_t *code;
+    wasm_u16_t block_id;
+  } labels[];
+} wasmbox_table_t;
+
 union wasmbox_code_operands {
   wasmbox_value_t value;
   wasm_u32_t index;
@@ -103,6 +111,7 @@ union wasmbox_code_operands {
   } r;
   wasmbox_function_t *func;
   wasmbox_code_t *code;
+  wasmbox_table_t *table;
 };
 
 /**

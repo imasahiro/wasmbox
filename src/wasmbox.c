@@ -83,6 +83,25 @@ static int wasmbox_module_add_memory_page(wasmbox_module_t *mod,
   return 0;
 }
 
+static void wasmbox_function_add_table(wasmbox_mutable_function_t *func,
+                                       wasmbox_table_t *table) {
+  if (func->tables == NULL) {
+    func->tables =
+        (wasmbox_table_t **) wasmbox_malloc(sizeof(wasmbox_table_t *));
+    func->table_size = 0;
+    func->table_capacity = 1;
+  }
+  if (func->table_size + 1 == func->table_capacity) {
+    func->table_capacity *= 2;
+    func->tables = (wasmbox_table_t **) wasmbox_realloc(
+        func->tables, sizeof(wasmbox_table_t *) * func->table_capacity);
+    bzero(func->tables + func->table_size,
+          (func->table_capacity - func->table_size) *
+              sizeof(wasmbox_table_t *));
+  }
+  func->tables[func->table_size++] = table;
+}
+
 #define STACK_INIT_SIZE 4
 
 static void
@@ -176,6 +195,20 @@ static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
         wasm_u32_t offset =
             direction == WASM_JUMP_DIRECTION_HEAD ? target->start : target->end;
         code->op0.code = func->base.code + offset;
+      } else if (code->h.opcode == OPCODE_JUMP_TABLE) {
+        wasm_u32_t offset;
+        wasmbox_block_t *target;
+        wasmbox_table_t *table = code->op0.table;
+        for (int k = 0; k < table->size; ++k) {
+          target = &func->blocks[table->labels[k].block_id];
+          offset = target->direction == WASM_JUMP_DIRECTION_HEAD ? target->start
+                                                                 : target->end;
+          table->labels[k].code = func->base.code + offset;
+        }
+        target = &func->blocks[code->op1.index];
+        offset = target->direction == WASM_JUMP_DIRECTION_HEAD ? target->start
+                                                               : target->end;
+        code->op1.code = func->base.code + offset;
       }
     }
 
@@ -191,7 +224,7 @@ static int wasmbox_function_freeze(wasmbox_module_t *mod,
   wasmbox_block_link(func);
   for (wasm_u16_t i = 0; i < func->block_size; ++i) {
     wasmbox_block_t *block = &func->blocks[i];
-    if (block->code_size > 0) {
+    if (block->code_capacity > 0) {
       wasmbox_free(block->code);
     }
   }
@@ -225,6 +258,7 @@ static wasm_s16_t wasmbox_block_add(wasmbox_mutable_function_t *func) {
   wasm_s16_t block_index = func->block_size++;
   wasmbox_block_t *block = &func->blocks[block_index];
   memset(block, -1, sizeof(wasmbox_block_t));
+  block->type.type = WASMBOX_BLOCK_TYPE_NONE;
   block->id = block_index;
   block->code = NULL;
   block->code_size = 0;
@@ -320,6 +354,12 @@ static void wasmbox_code_add_move(wasmbox_mutable_function_t *func,
   code.h.opcode = OPCODE_MOVE;
   code.op0.reg = to;
   code.op1.reg = from;
+  wasmbox_code_add(func, &code);
+}
+
+static void wasmbox_code_add_return(wasmbox_mutable_function_t *func) {
+  wasmbox_code_t code;
+  code.h.opcode = OPCODE_RETURN;
   wasmbox_code_add(func, &code);
 }
 
@@ -607,13 +647,12 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 // INST(0x05, end)
 static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_module_t *mod,
                             wasmbox_mutable_function_t *func, wasm_u8_t op) {
-  wasmbox_code_t code;
   wasmbox_block_t *block = &func->blocks[func->current_block_id];
   if (func->base.type->return_size > 0 && block->already_terminated == 0) {
     wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
   }
-  code.h.opcode = OPCODE_RETURN;
-  wasmbox_code_add(func, &code);
+  wasmbox_code_add_return(func);
+
   return 0;
 }
 
@@ -672,17 +711,23 @@ static int decode_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
   return 0;
 }
 
+static wasmbox_block_t *resolve_target_block(wasmbox_mutable_function_t *func,
+                                             wasm_u64_t label) {
+  wasmbox_block_t *block = &func->blocks[func->current_block_id];
+  for (wasm_u64_t i = 0; i < label; ++i) {
+    wasm_u16_t parent = block->parent_id;
+    block = &func->blocks[parent];
+  }
+  assert(block != NULL);
+  return block;
+}
+
 // INST(0x0C l:labelidx, br l)
 static int decode_br(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                      wasmbox_mutable_function_t *func, wasm_u8_t op) {
   wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                       &ins->index, ins->length);
-  wasmbox_block_t *block = &func->blocks[func->current_block_id];
-  for (wasm_u64_t i = 0; i < labelidx; ++i) {
-    wasm_u16_t parent = block->parent_id;
-    block = &func->blocks[parent];
-  }
-  assert(block != NULL);
+  wasmbox_block_t *block = resolve_target_block(func, labelidx);
   wasmbox_code_add_jump(func, OPCODE_JUMP, block->id, block->direction);
   return 0;
 }
@@ -692,12 +737,7 @@ static int decode_br_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                         wasmbox_mutable_function_t *func, wasm_u8_t op) {
   wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                       &ins->index, ins->length);
-  wasmbox_block_t *block = &func->blocks[func->current_block_id];
-  for (wasm_u64_t i = 0; i < labelidx; ++i) {
-    wasm_u16_t parent = block->parent_id;
-    block = &func->blocks[parent];
-  }
-  assert(block != NULL);
+  wasmbox_block_t *block = resolve_target_block(func, labelidx);
   wasmbox_code_add_jump(func, OPCODE_JUMP_IF, block->id, block->direction);
   return 0;
 }
@@ -705,27 +745,36 @@ static int decode_br_if(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 // INST(0x0E l:vec(labelidx) lN:labelidx, br_table l* lN)
 static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                            wasmbox_mutable_function_t *func, wasm_u8_t op) {
-  fprintf(stdout, "br_table l:(");
   wasm_u64_t len = wasmbox_parse_unsigned_leb128(ins->data + ins->index,
                                                  &ins->index, ins->length);
+  wasmbox_table_t *table = (wasmbox_table_t *) wasmbox_malloc(
+      sizeof(wasmbox_table_t) + sizeof(wasmbox_code_t *) * len);
+  table->size = len;
+  wasmbox_function_add_table(func, table);
+
   for (wasm_u64_t i = 0; i < len; i++) {
     wasm_u64_t labelidx = wasmbox_parse_unsigned_leb128(
         ins->data + ins->index, &ins->index, ins->length);
-    if (i != 0) {
-      fprintf(stdout, ", ");
-    }
-    fprintf(stdout, "%llu", labelidx);
+    wasmbox_block_t *block = resolve_target_block(func, labelidx);
+    table->labels[i].block_id = block->id;
   }
-  wasm_u64_t defaultLabel = wasmbox_parse_unsigned_leb128(
+  wasm_u64_t default_label = wasmbox_parse_unsigned_leb128(
       ins->data + ins->index, &ins->index, ins->length);
-  fprintf(stdout, ") ln:%llu\n", defaultLabel);
+  wasmbox_block_t *default_block = resolve_target_block(func, default_label);
+
+  wasmbox_code_t code;
+  code.h.opcode = OPCODE_JUMP_TABLE;
+  code.op0.table = table;
+  code.op1.index = default_block->id;
+  code.op2.reg = wasmbox_function_pop_stack(func);
+  wasmbox_code_add(func, &code);
   return 0;
 }
 
 // INST(0x0F, return)
 static int decode_return(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                          wasmbox_mutable_function_t *func, wasm_u8_t op) {
-  fprintf(stdout, "return\n");
+  wasmbox_code_add_return(func);
   return 0;
 }
 
@@ -1471,11 +1520,18 @@ int wasmbox_module_dispose(wasmbox_module_t *mod) {
   }
   wasmbox_free(mod->types);
   for (wasm_u32_t i = 0; i < mod->function_size; ++i) {
-    wasmbox_mutable_function_t *func = (wasmbox_mutable_function_t *) mod->functions[i];
+    wasmbox_mutable_function_t *func =
+        (wasmbox_mutable_function_t *) mod->functions[i];
     if (func->base.name != NULL) {
       wasmbox_free(func->base.name);
     }
     wasmbox_free(func->base.code);
+    for (int j = 0; j < func->table_size; ++j) {
+      wasmbox_free(func->tables[j]);
+    }
+    if (func->table_size > 0) {
+      wasmbox_free(func->tables);
+    }
     wasmbox_free(func);
   }
   wasmbox_free(mod->functions);

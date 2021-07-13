@@ -50,7 +50,6 @@ struct wasmbox_block_t {
   wasmbox_blocktype_t type;
   enum wasm_jump_direction direction;
   wasmbox_code_t *code;
-  wasm_u16_t stack_top;
   wasm_u16_t code_size;
   wasm_u16_t code_capacity;
   wasm_u32_t start;
@@ -70,6 +69,9 @@ typedef struct wasmbox_mutable_function_t {
   wasm_s16_t stack_size;
   wasm_u16_t stack_capacity;
   wasm_s16_t *operand_stack;
+  wasmbox_table_t **tables;
+  wasm_s16_t table_size;
+  wasm_u16_t table_capacity;
 } wasmbox_mutable_function_t;
 
 typedef int (*wasmbox_op_decode_func_t)(wasmbox_input_stream_t *ins,
@@ -307,6 +309,7 @@ enum wasmbox_opcode {
   OPCODE_RETURN,
   OPCODE_JUMP,
   OPCODE_JUMP_IF,
+  OPCODE_JUMP_TABLE,
   OPCODE_MOVE,
   OPCODE_DYNAMIC_CALL,
   OPCODE_STATIC_CALL,
@@ -331,6 +334,7 @@ static const char *debug_opcodes[] = {
     "OPCODE_RETURN",
     "OPCODE_JUMP",
     "OPCODE_JUMP_IF",
+    "OPCODE_JUMP_TABLE",
     "OPCODE_MOVE",
     "OPCODE_DYNAMIC_CALL",
     "OPCODE_STATIC_CALL",
