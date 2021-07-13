@@ -173,10 +173,14 @@ static int wasmbox_function_freeze(wasmbox_module_t *mod,
   wasmbox_block_link(func);
   for (wasm_u16_t i = 0; i < func->block_size; ++i) {
     wasmbox_block_t *block = &func->blocks[i];
-    wasmbox_free(block->code);
+    if (block->code_size > 0) {
+      wasmbox_free(block->code);
+    }
   }
   wasmbox_free(func->blocks);
-  wasmbox_free(func->operand_stack);
+  if (func->stack_capacity > 0) {
+    wasmbox_free(func->operand_stack);
+  }
 #ifdef WASMBOX_VM_USE_DIRECT_THREADED_CODE
   void **labels = (void **) mod->shared_code[0].op0.value.u64;
   for (int i = 0; i < func->base.code_size; ++i) {
@@ -578,7 +582,9 @@ static int decode_block(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 static int decode_block_end(wasmbox_input_stream_t *in, wasmbox_module_t *mod,
                             wasmbox_mutable_function_t *func, wasm_u8_t op) {
   wasmbox_code_t code;
-  wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
+  if (func->base.type->return_size > 0) {
+    wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
+  }
   code.h.opcode = OPCODE_RETURN;
   wasmbox_code_add(func, &code);
   return 0;
