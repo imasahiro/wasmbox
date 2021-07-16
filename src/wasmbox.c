@@ -98,7 +98,7 @@ wasmbox_function_stack_expand_if_needed(wasmbox_mutable_function_t *func) {
     func->operand_stack = (wasm_s16_t *) wasmbox_realloc(
         func->operand_stack,
         sizeof(*func->operand_stack) * func->stack_capacity);
-    bzero(func->operand_stack + func->stack_size + 1,
+    bzero(func->operand_stack + func->stack_size,
           (func->stack_capacity - func->stack_size) * sizeof(wasm_s16_t));
   }
 }
