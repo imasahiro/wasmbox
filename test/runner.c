@@ -60,7 +60,7 @@ static int check_result(int result_length, wasmbox_value_t stack[],
                 equal ? "==" : "!=", stack[0].f64);
         break;
       default:
-        fprintf(stderr, "unexpected: %d\n", expected_types[i]);
+        fprintf(stderr, "unexpected type: %d\n", expected_types[i]);
         equal = 0;
         break;
     }
@@ -114,7 +114,7 @@ int main(int argc, char const *argv[]) {
         type = WASM_TYPE_F64;
         break;
       default:
-        fprintf(stderr, "unexpected: %c\n", ch);
+        fprintf(stderr, "unexpected char: '%c'(%d)\n", ch, ch);
         return -1;
     }
     if (io == '>') {
