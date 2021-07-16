@@ -297,6 +297,7 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       LP(RETURN),
       LP(JUMP),
       LP(JUMP_IF),
+      LP(JUMP_TABLE),
       LP(MOVE),
       LP(DYNAMIC_CALL),
       LP(STATIC_CALL),
@@ -349,6 +350,15 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
         code = code->op0.code;
       } else {
         code++;
+      }
+      GOTO_NEXT(code);
+    }
+    CASE(JUMP_TABLE) {
+      wasm_u32_t index = stack[code->op2.reg].u32;
+      if (code->op0.table->size < index) {
+        code = code->op0.table->labels[index].code;
+      } else {
+        code = code->op1.code;
       }
       GOTO_NEXT(code);
     }
@@ -1097,6 +1107,14 @@ void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end,
       case OPCODE_JUMP_IF:
         fprintf(stdout, "%sjump to %p if stack[%d].u32\n", indent,
                 code->op0.code, code->op1.reg);
+        break;
+      case OPCODE_JUMP_TABLE:
+        fprintf(stdout, "%sjump to (stack[%d].u32) \n", indent, code->op2.reg);
+        for (int i = 0; i < code->op0.table->size; ++i) {
+          fprintf(stdout, "%s%s%d -> %p\n", indent, indent, i,
+                  code->op0.table->labels[i].code);
+        }
+        fprintf(stdout, "%s%sdefault -> %p\n", indent, indent, code->op1.code);
         break;
       case OPCODE_DYNAMIC_CALL:
         fprintf(stdout, "%sstack[%d].u64= func%u()\n", indent, code->op0.reg,
