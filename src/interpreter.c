@@ -979,7 +979,8 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       GOTO_NEXT(code);
     }
     CASE(F32_DEMOTE_F64) {
-      NOT_IMPLEMENTED();
+      CONVERT_OP(f64, f32, wasm_f32_t);
+      GOTO_NEXT(code);
     }
     CASE(F64_CONVERT_I32_S) {
       CONVERT_OP(s32, f64, wasm_f64_t);
@@ -998,7 +999,8 @@ void wasmbox_eval_function(wasmbox_module_t *mod, wasmbox_code_t *code,
       GOTO_NEXT(code);
     }
     CASE(F64_PROMOTE_F32) {
-      NOT_IMPLEMENTED();
+      CONVERT_OP(f32, f64, wasm_f64_t);
+      GOTO_NEXT(code);
     }
     CASE(I32_REINTERPRET_F32) {
       stack[code->op0.reg].u32 = stack[code->op1.reg].u32;
@@ -1577,7 +1579,9 @@ void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end,
         DUMP_CONVERT_OP(u64, f32);
         break;
       case OPCODE_F32_DEMOTE_F64:
-        NOT_IMPLEMENTED();
+        fprintf(stdout, "%sstack[%d].f32 = demote(stack[%d].f64)\n", indent,
+                code->op0.reg, code->op1.reg);
+        break;
       case OPCODE_F64_CONVERT_I32_S:
         DUMP_CONVERT_OP(s32, f64);
         break;
@@ -1591,7 +1595,9 @@ void wasmbox_dump_function(wasmbox_code_t *code_start, wasmbox_code_t *code_end,
         DUMP_CONVERT_OP(u64, f64);
         break;
       case OPCODE_F64_PROMOTE_F32:
-        NOT_IMPLEMENTED();
+        fprintf(stdout, "%sstack[%d].f64 = promote(stack[%d].f32)\n", indent,
+                code->op0.reg, code->op1.reg);
+        break;
       case OPCODE_I32_REINTERPRET_F32:
         fprintf(stdout, "%sstack[%d].u32 = reinterpret_cast(stack[%d].f32)\n",
                 indent, code->op0.reg, code->op1.reg);

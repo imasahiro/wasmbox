@@ -1,7 +1,7 @@
 #!/bin/bash
 
-CLANG=../llvm-project/build/bin/clang
-WASM_LD=../llvm-project/build/bin/wasm-ld
+CLANG=clang
+WASM_LD=wasm-ld
 OBJDUMP=../wabt/bin/wasm-objdump
 STRIP=../wabt/bin/wasm-strip
 OPTS=""
