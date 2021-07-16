@@ -774,6 +774,10 @@ static int decode_br_table(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 // INST(0x0F, return)
 static int decode_return(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                          wasmbox_mutable_function_t *func, wasm_u8_t op) {
+  wasmbox_block_t *block = &func->blocks[func->current_block_id];
+  if (func->base.type->return_size > 0 && block->already_terminated == 0) {
+    wasmbox_code_add_move(func, wasmbox_function_pop_stack(func), -1);
+  }
   wasmbox_code_add_return(func);
   return 0;
 }
