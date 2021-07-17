@@ -155,7 +155,8 @@ static void wasmbox_block_link(wasmbox_mutable_function_t *func) {
     //      JUMP BB1       |      nop
     // BB1: do something   | BB1: do something
     //      ...            |      ...
-    if (block->code[block->code_size - 1].h.opcode == OPCODE_JUMP) {
+    if (block->code_size > 0 &&
+        block->code[block->code_size - 1].h.opcode == OPCODE_JUMP) {
       wasmbox_code_t *code = &block->code[block->code_size - 1];
       wasmbox_block_t *target = &func->blocks[code->op0.index];
       if (i + 1 < func->block_size && target == &func->blocks[i + 1]) {
