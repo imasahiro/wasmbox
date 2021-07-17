@@ -97,6 +97,7 @@ typedef struct wasmbox_table_t {
   wasm_u32_t size;
   union table_entry {
     wasmbox_code_t *code;
+    wasmbox_function_t *func;
     wasm_u16_t block_id;
   } labels[];
 } wasmbox_table_t;
@@ -182,6 +183,8 @@ typedef struct wasmbox_module_t {
   wasmbox_type_t **types;
   wasm_u32_t type_size;
   wasm_u32_t type_capacity;
+  wasmbox_table_t **tables;
+  wasm_u32_t table_size;
   wasmbox_code_t shared_code[2];
 } wasmbox_module_t;
 
