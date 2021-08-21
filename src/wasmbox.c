@@ -927,12 +927,10 @@ static int decode_memory_inst(wasmbox_input_stream_t *ins,
     return -1;
   }
   switch (op) {
-#define FUNC(opcode, out_type, in_type, inst, vmopcode)                    \
-  case (opcode): {                                                         \
-    fprintf(stdout, "" #out_type #inst #in_type "(align:%u, offset:%u)\n", \
-            align, offset);                                                \
-    wasmbox_code_add_##inst(func, vmopcode, offset);                       \
-    break;                                                                 \
+#define FUNC(opcode, out_type, in_type, inst, vmopcode) \
+  case (opcode): {                                      \
+    wasmbox_code_add_##inst(func, vmopcode, offset);    \
+    break;                                              \
   }
     MEMORY_INST_EACH(FUNC)
 #undef FUNC
@@ -1035,7 +1033,7 @@ static int decode_op0_inst(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
 #define FUNC(op, param, type, inst, vmopcode) \
   case (op):                                  \
     return wasmbox_code_add_##param##_op(func, vmopcode);
-    NUMERIC_INST_EACH(FUNC)
+      NUMERIC_INST_EACH(FUNC)
 #undef FUNC
     default:
       return -1;
@@ -1062,36 +1060,55 @@ static int decode_truncation_inst(wasmbox_input_stream_t *ins,
   return -1;
 }
 
-static const wasmbox_op_decorder_t decoders[] = {
-    {0x00, 0x01, decode_op0_inst},
-    {0x02, 0x03, decode_block},
-    {0x04, 0x04, decode_if},
-    {0x0B, 0x0B, decode_block_end},
-    {0x0C, 0x0C, decode_br},
-    {0x0D, 0x0D, decode_br_if},
-    {0x0E, 0x0E, decode_br_table},
-    {0x0F, 0x0F, decode_return},
-    {0x10, 0x10, decode_call},
-    {0x11, 0x11, decode_call_indirect},
-    {0x1A, 0x1B, decode_op0_inst},
-    {0x20, 0x24, decode_variable_inst},
-    {0x25, 0x26, decode_table_inst},
-    {0x28, 0x3E, decode_memory_inst},
-    {0x3F, 0x40, decode_memory_size_and_grow},
-    {0x41, 0x44, decode_constant_inst},
-    {0x45, 0xC4, decode_op0_inst},
-    {0xFC, 0xFC, decode_truncation_inst}};
+static int decode_undefined_op(wasmbox_input_stream_t *ins,
+                               wasmbox_module_t *mod,
+                               wasmbox_mutable_function_t *func, wasm_u8_t op) {
+  LOG("undefined op code");
+  return -1;
+}
+
+static const wasm_u8_t decoder_table[] = {
+    1,  1,  2,  2,  3,  0,  0,  0,  0,  0,  0,  4,  5,  6,  7,  8,  9,  10, 0,
+    0,  0,  0,  0,  0,  0,  0,  11, 11, 0,  0,  0,  0,  12, 12, 12, 12, 12, 0,
+    0,  0,  13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
+    13, 13, 13, 13, 13, 13, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+    16, 16, 16, 16, 16, 16, 16, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  17, 0,  0,  0,
+};
+
+static const wasmbox_op_decode_func_t decode_funcs[] = {
+    decode_undefined_op,
+    decode_op0_inst,
+    decode_block,
+    decode_if,
+    decode_block_end,
+    decode_br,
+    decode_br_if,
+    decode_br_table,
+    decode_return,
+    decode_call,
+    decode_call_indirect,
+    decode_op0_inst,
+    decode_variable_inst,
+    decode_memory_inst,
+    decode_memory_size_and_grow,
+    decode_constant_inst,
+    decode_op0_inst,
+    decode_truncation_inst};
 
 static int parse_instruction(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
                              wasmbox_mutable_function_t *func) {
   wasm_u8_t op = wasmbox_input_stream_read_u8(ins);
-  for (int i = 0; i < sizeof(decoders) / sizeof(decoders[0]); i++) {
-    const wasmbox_op_decorder_t d = decoders[i];
-    if (d.lower <= op && op <= d.upper) {
-      return d.func(ins, mod, func, op);
-    }
-  }
-  return -1;
+  const wasmbox_op_decode_func_t decorder = decode_funcs[decoder_table[op]];
+  return decorder(ins, mod, func, op);
 }
 
 static int parse_code(wasmbox_input_stream_t *ins, wasmbox_module_t *mod,
